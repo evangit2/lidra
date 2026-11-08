@@ -54,12 +54,12 @@ let
   # Do not edit these values by hand, because each pair must stay in sync.
   sources = {
     x86_64-linux = {
-      url = "https://github.com/evangit2/lidra/releases/download/${version}/Lidra-${version}-linux-amd64.deb";
-      hash = "sha256-nANUulzCujNhig4MFWGvTXv5U3dw6mXPYuK7OQWpiV4=";
+      url = "https://github.com/evangit2/lidra/releases/download/v${version}/Lidra-${version}-linux-amd64.deb";
+      hash = "sha256-LXVqlOGLxe1Xc183sLwaQ3G+fMP9EeIzpgM/bmsT9D0=";
     };
     aarch64-linux = {
-      url = "https://github.com/evangit2/lidra/releases/download/${version}/Lidra-${version}-linux-arm64.deb";
-      hash = "sha256-2OTAyvdYrsk2jx8m+LGiMif783vjrHCgKk153t4CLLw=";
+      url = "https://github.com/evangit2/lidra/releases/download/v${version}/Lidra-${version}-linux-arm64.deb";
+      hash = "sha256-FElojHfNseSf6DP5qfHb1Ohft3asbRZ5qj/YxZ16658=";
     };
   };
 
