@@ -10,7 +10,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const WRAPPER = path.join("opt", "lidra", "wrapper");
-const DIST = path.join(__dirname, "..", "dist");
+// electron-builder writes to `release/`; older configs used `dist/`.
+const ROOTS = [path.join(__dirname, "..", "release"), path.join(__dirname, "..", "dist")];
 
 function find(directory, depth = 0) {
   if (depth > 10) return [];
@@ -29,7 +30,7 @@ function find(directory, depth = 0) {
   return found;
 }
 
-const runtimes = find(DIST).filter((file) => {
+const runtimes = ROOTS.flatMap((root) => find(root)).filter((file) => {
   try {
     return fs.statSync(file).size > 0;
   } catch {
@@ -38,10 +39,10 @@ const runtimes = find(DIST).filter((file) => {
 });
 
 if (runtimes.length === 0) {
-  console.error(`✗ no resources/wrapper/${WRAPPER} in dist/ — the package would ship without the lossless runtime`);
+  console.error(`✗ no resources/wrapper/${WRAPPER} in release/ — the package would ship without the lossless runtime`);
   process.exit(1);
 }
 
 for (const file of runtimes) {
-  console.log(`✓ ${path.relative(DIST, file)} (${Math.round(fs.statSync(file).size / 1024)} KB)`);
+  console.log(`✓ ${path.relative(path.join(__dirname, ".."), file)} (${Math.round(fs.statSync(file).size / 1024)} KB)`);
 }
