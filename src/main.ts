@@ -9,6 +9,7 @@ import {
   webFrameMain,
 } from "electron";
 import fs from "fs";
+import os from "os";
 import path from "path";
 import log from "electron-log/main";
 import { AUTH_FIX_TOKEN, PASSKEY_CONTAINER_SELECTORS } from "./authFrame";
@@ -76,10 +77,13 @@ import { CredentialStore } from "./audio/tokens";
 import { KeyCache, createKeyProvider } from "./audio/keys";
 import { createWidevineProvider } from "./audio/widevine/provider";
 import { webPlaybackMaster } from "./audio/webplayback";
+import { WrapperService } from "./audio/wrapper/service";
 import { initAudioBridge } from "./audio/bridge";
 import { findFfmpeg } from "./audio/transcode";
 import {
   getAudioDecryptorService,
+  getAudioWrapperAutostart,
+  getAudioWrapperCommand,
   getAudioEnabled,
   getAudioEmeShim,
   getAudioFfmpegPath,
@@ -452,6 +456,14 @@ function publishQuality(payload: {
   });
 }
 
+let wrapperService: WrapperService | null = null;
+
+/** Expand `~` and `$HOME` in the configured wrapper command line. */
+function expandWrapperCommand(command: string): string {
+  const home = os.homedir();
+  return command.replace(/^~(?=$|\/)/, home).replace(/\$\{?HOME\}?/g, home);
+}
+
 function initAudioEngine(ses: Electron.Session): AudioEngine {
   const credentials = new CredentialStore(ses);
   // Prefer a Widevine licence (no external service) when a device blob is
@@ -554,6 +566,25 @@ function initAudioEngine(ses: Electron.Session): AudioEngine {
       );
     });
   ipcMain.handle("lidra:audio-status", () => engine.status());
+
+  // FairPlay wrapper: the only route to lossless and Atmos. Lidra owns its
+  // lifecycle, so the user does not have to start a service by hand.
+  const wrapper = new WrapperService({
+    command: expandWrapperCommand(getAudioWrapperCommand()),
+    decryptor: getAudioDecryptorService() || "127.0.0.1:10020",
+    manifest: getAudioManifestService() || "127.0.0.1:20020",
+    onChange: (status) => mainLog.info(`wrapper ${status.state}${status.detail ? ` (${status.detail})` : ""}`),
+  });
+  wrapperService = wrapper;
+  ipcMain.handle("lidra:wrapper-status", () => wrapper.status());
+  ipcMain.handle("lidra:wrapper-start", () => wrapper.start());
+  ipcMain.handle("lidra:wrapper-stop", () => {
+    wrapper.stop();
+    return wrapper.status();
+  });
+  if (getAudioWrapperAutostart() && getAudioWrapperCommand().trim()) {
+    void wrapper.start();
+  }
   return engine;
 }
 

@@ -192,6 +192,13 @@ describe('settings actions', () => {
     applySettingsAction({ type: 'audioDecryptor', value: '' });
     expect(getSettingsState().audioDecryptor).toBe('');
     expect(() => applySettingsAction({ type: 'audioDecryptor', value: 'x'.repeat(300) })).toThrow();
+
+    // The wrapper command starts the FairPlay service; autostart is a flag.
+    applySettingsAction({ type: 'audioWrapperCommand', value: '  ~/.lidra-wrapper/wrapper -D 10020 ' });
+    expect(getSettingsState().audioWrapperCommand).toBe('~/.lidra-wrapper/wrapper -D 10020');
+    applySettingsAction({ type: 'audioWrapperAutostart', value: true });
+    expect(getSettingsState().audioWrapperAutostart).toBe(true);
+    expect(() => applySettingsAction({ type: 'audioWrapperAutostart', value: 'yes' })).toThrow();
     expect(() => applySettingsAction({ type: 'audioManifest', value: 7 })).toThrow();
   });
 });

@@ -56,6 +56,8 @@ interface StoreSchema {
   'audio.emeShim': boolean;
   'audio.decryptorService': string;
   'audio.manifestService': string;
+  'audio.wrapperCommand': string;
+  'audio.wrapperAutostart': boolean;
   'audio.widevineDevice': string | null;
   'audio.spatial': 'bed' | 'binaural';
 }
@@ -495,6 +497,26 @@ export function getAudioManifestService(): string {
 /** Persist the wrapper manifest-socket address. */
 export function setAudioManifestService(address: string): void {
   setConfigValue('audio.manifestService', address);
+}
+
+/** Read the command line Lidra uses to start the FairPlay wrapper. */
+export function getAudioWrapperCommand(): string {
+  return envString('LIDRA_WRAPPER_COMMAND') ?? getConfigValue('audio.wrapperCommand', '');
+}
+
+/** Persist the wrapper command line. */
+export function setAudioWrapperCommand(command: string): void {
+  setConfigValue('audio.wrapperCommand', command.trim());
+}
+
+/** Read whether Lidra should start the wrapper with the app. */
+export function getAudioWrapperAutostart(): boolean {
+  return getConfigValue('audio.wrapperAutostart', false);
+}
+
+/** Persist the wrapper autostart choice. */
+export function setAudioWrapperAutostart(enabled: boolean): void {
+  setConfigValue('audio.wrapperAutostart', enabled);
 }
 
 /** Read the Widevine device blob path (a `.wvd` file or a directory). */

@@ -284,6 +284,9 @@ export interface TrayStrings {
   audioDecryptorHint: string;
   audioManifest: string;
   audioManifestHint: string;
+  audioWrapperCommand: string;
+  audioWrapperCommandHint: string;
+  audioWrapperAutostart: string;
   audioFfmpegReady: string;
   audioFfmpegMissing: string;
   qualityAuto: string;
@@ -361,6 +364,11 @@ const TRAY_TEXT: Record<keyof TrayStrings, Record<string, string>> = {
   audioManifestHint: {
     en: 'Optional host:port of a wrapper that hands out the manifest; use it when the wrapper, not the API, should decide the renditions.',
   },
+  audioWrapperCommand: { en: 'Wrapper command' },
+  audioWrapperCommandHint: {
+    en: 'Command Lidra runs to start the FairPlay wrapper, which is what lossless and Atmos need. Leave blank to run one yourself.',
+  },
+  audioWrapperAutostart: { en: 'Start wrapper with Lidra' },
   audioFfmpegReady: { en: 'ffmpeg: ready' },
   audioFfmpegMissing: { en: 'ffmpeg: missing — lossless and Dolby cannot play' },
   qualityAuto: { en: 'Automatic (best available)' },

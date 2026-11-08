@@ -68,6 +68,9 @@
     if (document.activeElement !== decryptor) decryptor.value = state.audioDecryptor;
     const manifest = byId('audioManifest');
     if (document.activeElement !== manifest) manifest.value = state.audioManifest;
+    const wrapperCommand = byId('audioWrapperCommand');
+    if (document.activeElement !== wrapperCommand) wrapperCommand.value = state.audioWrapperCommand;
+    byId('audioWrapperAutostart').checked = state.audioWrapperAutostart;
     byId('audio-ffmpeg').textContent = state.audioFfmpeg
       ? `${state.labels.audioFfmpegReady} — ${state.audioFfmpeg}`
       : state.labels.audioFfmpegMissing;
@@ -109,9 +112,12 @@
   byId('audioDevice').addEventListener('change', () =>
     apply({ type: 'audioDevice', value: byId('audioDevice').value }),
   );
-  for (const key of ['audioDecryptor', 'audioManifest']) {
+  for (const key of ['audioDecryptor', 'audioManifest', 'audioWrapperCommand']) {
     byId(key).addEventListener('change', () => apply({ type: key, value: byId(key).value }));
   }
+  byId('audioWrapperAutostart').addEventListener('change', () =>
+    apply({ type: 'audioWrapperAutostart', value: byId('audioWrapperAutostart').checked }),
+  );
   for (const key of ['lastfmConnect', 'lastfmDisconnect']) {
     byId(key).addEventListener('click', () => apply({ type: key }));
   }

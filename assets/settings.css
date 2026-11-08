@@ -24,7 +24,7 @@ label { line-height: 1.4; }
 select, button { font: inherit; color: var(--systemPrimary, CanvasText); background: var(--playerLCDBGFill, Canvas); border: 1px solid var(--border); border-radius: 6px; min-block-size: 36px; padding: 6px 10px; }
 select, input[type="text"] { inline-size: 54%; max-inline-size: 290px; min-inline-size: 0; }
 input[type="text"] { font: inherit; color: var(--systemPrimary, CanvasText); background: var(--playerLCDBGFill, Canvas); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; min-block-size: 36px; }
-#audio-hint, #audio-ffmpeg { margin: 0; padding: 0 16px 12px; font-size: 12px; opacity: 0.75; }
+#audio-hint, #audio-ffmpeg, #audio-decryptor-hint, #audio-manifest-hint, #audio-wrapper-hint { margin: 0; padding: 0 16px 12px; font-size: 12px; opacity: 0.75; }
 #audio-ffmpeg { padding-block-start: 12px; border-block-start: 1px solid var(--border); }
 button { cursor: pointer; max-inline-size: 100%; }
 button:hover { background: var(--surface); }

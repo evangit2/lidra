@@ -32,6 +32,7 @@ function fixture(): SettingsState {
     closeToTray: false, notifications: true, discord: false,
     audioEnabled: true, audioQuality: 'hi-res', audioSpatial: 'binaural',
     audioDevice: '/tmp/device.wvd', audioDecryptor: '', audioManifest: '',
+    audioWrapperCommand: '', audioWrapperAutostart: false,
     audioFfmpeg: '/usr/bin/ffmpeg',
     lastfm: { available: true, customEndpoint: false, connected: false, enabled: false, username: '' },
     options: {
