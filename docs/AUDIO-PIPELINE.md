@@ -276,6 +276,22 @@ rename `enca` to its `frma` format) and sample-level decryption. The AES primiti
 is injectable, which is what lets the wrapper socket decrypt remotely without
 Lidra ever holding a key.
 
+### The wrapper's key context
+
+A wrapper process derives one key context per song and pins it until it exits.
+Apple's media playlists begin with a placeholder key
+(`skd://itunes.apple.com/P000000000/s1/e1`) and switch to the song's real key
+before the second segment, so the first arm has to address the placeholder the
+way the reference client does: with the literal song id `0`. Arming it with the
+real id leaves the real key unreachable, and the service then answers with noise
+rather than an error — which is why the pipeline verifies every fragment's frame
+headers (ALAC header repetition, `0x0b77` for AC-3/EC-3) and restarts the
+wrapper once when they do not match.
+
+Fragments are decrypted in one pipelined batch with a bounded in-flight window
+(256 KiB of unread plaintext). Round-tripping per sample costs about a
+millisecond each, which on a 15 s fragment dominated start-up.
+
 ## Verification status
 
 Covered by automated tests in this repository:
@@ -286,7 +302,8 @@ Covered by automated tests in this repository:
 - Master/media playlist parsing, ranking and preference fallback
   (`test/audio-hls.test.ts`).
 - Key service transports and caching (`test/audio-keys.test.ts`).
-- Wrapper decrypt and manifest sockets, including wire framing
+- Wrapper decrypt and manifest sockets, including wire framing, the
+  placeholder-key arm id, batched decryption and plaintext verification
   (`test/audio-legacy.test.ts`).
 - Loopback HLS server: playlists, ranges, CORS, retry semantics
   (`test/audio-server.test.ts`).
