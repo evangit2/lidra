@@ -71,6 +71,7 @@
     const wrapperCommand = byId('audioWrapperCommand');
     if (document.activeElement !== wrapperCommand) wrapperCommand.value = state.audioWrapperCommand;
     byId('audioWrapperAutostart').checked = state.audioWrapperAutostart;
+    byId('audioRememberLogin').checked = state.audioRememberLogin;
     byId('audio-ffmpeg').textContent = state.audioFfmpeg
       ? `${state.labels.audioFfmpegReady} — ${state.audioFfmpeg}`
       : state.labels.audioFfmpegMissing;
@@ -117,6 +118,9 @@
   }
   byId('audioWrapperAutostart').addEventListener('change', () =>
     apply({ type: 'audioWrapperAutostart', value: byId('audioWrapperAutostart').checked }),
+  );
+  byId('audioRememberLogin').addEventListener('change', () =>
+    apply({ type: 'audioRememberLogin', value: byId('audioRememberLogin').checked }),
   );
   for (const key of ['lastfmConnect', 'lastfmDisconnect']) {
     byId(key).addEventListener('click', () => apply({ type: key }));

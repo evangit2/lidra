@@ -287,6 +287,8 @@ export interface TrayStrings {
   audioWrapperCommand: string;
   audioWrapperCommandHint: string;
   audioWrapperAutostart: string;
+  audioRememberLogin: string;
+  audioRememberLoginHint: string;
   wrapperEmail: string;
   wrapperPassword: string;
   wrapperCode: string;
@@ -374,6 +376,10 @@ const TRAY_TEXT: Record<keyof TrayStrings, Record<string, string>> = {
     en: 'Command Lidra runs to start the FairPlay wrapper, which is what lossless and Atmos need. Leave blank to run one yourself.',
   },
   audioWrapperAutostart: { en: 'Start wrapper with Lidra' },
+  audioRememberLogin: { en: 'Keep me signed in for lossless' },
+  audioRememberLoginHint: {
+    en: 'Stores the Apple ID sign-in on this computer (OS keyring, or an encrypted file when no keyring is available) so lossless and Atmos start without asking again.',
+  },
   wrapperEmail: { en: 'Apple ID' },
   wrapperPassword: { en: 'Password' },
   wrapperCode: { en: 'Two-factor code' },

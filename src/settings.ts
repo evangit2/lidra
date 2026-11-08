@@ -47,6 +47,7 @@ export type SettingsAction =
   | { type: "audioManifest"; value: string }
   | { type: "audioWrapperCommand"; value: string }
   | { type: "audioWrapperAutostart"; value: boolean }
+  | { type: "audioRememberLogin"; value: boolean }
   | { type: "lastfmConnect" | "lastfmDisconnect" };
 
 /** A stored option value paired with its display label. */
@@ -74,6 +75,8 @@ export interface SettingsState {
   /** Command line Lidra uses to start the FairPlay wrapper. */
   audioWrapperCommand: string;
   audioWrapperAutostart: boolean;
+  /** Whether the wrapper sign-in is remembered across launches. */
+  audioRememberLogin: boolean;
   /** Resolved ffmpeg path, or null when none is available. */
   audioFfmpeg: string | null;
   lastfm: {
@@ -195,6 +198,7 @@ export function getSettingsState(): SettingsState {
     audioManifest: config.getAudioManifestService(),
     audioWrapperCommand: config.getAudioWrapperCommand(),
     audioWrapperAutostart: config.getAudioWrapperAutostart(),
+    audioRememberLogin: config.getAudioRememberLogin(),
     audioFfmpeg: findFfmpeg(config.getAudioFfmpegPath() ?? undefined),
     lastfm: {
       available: lastfm.isConfigured(),
@@ -310,6 +314,8 @@ function isSettingsAction(
       return typeof data.value === "string" && data.value.trim().length <= 4096;
     case "audioWrapperAutostart":
       return typeof data.value === "boolean";
+    case "audioRememberLogin":
+      return typeof data.value === "boolean";
     case "lastfmEnabled":
       return (
         state.lastfm.available &&
@@ -383,6 +389,11 @@ export function applySettingsAction(action: unknown): SettingsState {
       break;
     case "audioWrapperAutostart":
       config.setAudioWrapperAutostart(action.value);
+      break;
+    case "audioRememberLogin":
+      config.setAudioRememberLogin(action.value);
+      // Turning it off has to remove what is already stored.
+      if (!action.value) config.setAudioWrapperLogin(null);
       break;
     case "discord":
       config.setDiscordEnabled(action.value);

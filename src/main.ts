@@ -10,6 +10,7 @@ import {
   webFrameMain,
 } from "electron";
 import { spawn } from "child_process";
+import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -96,6 +97,7 @@ import {
   getAudioKeyTransport,
   getAudioManifestService,
   getAudioQuality,
+  getAudioRememberLogin,
   getAudioSpatial,
   getAudioWidevineDevice,
   getAudioWrapperLogin,
@@ -1038,37 +1040,90 @@ let wrapperSignInStarted = false;
  * with the OS keyring) lets Lidra start a fresh, correctly keyed wrapper at
  * launch instead of asking the user to sign in again.
  */
-function saveWrapperLogin(email: string, password: string): void {
-  if (!email || !password) return;
-  if (!safeStorage.isEncryptionAvailable()) {
-    mainLog.warn("wrapper: OS keyring unavailable, not remembering this sign-in");
-    return;
-  }
+function localVaultKey(): Buffer {
+  // No OS keyring on this machine: keep the key in the profile with owner-only
+  // permissions. This is not hardware-backed, and Settings says so.
+  const file = path.join(app.getPath("userData"), "wrapper-login.key");
   try {
-    const blob = safeStorage.encryptString(JSON.stringify({ email, password }));
-    setAudioWrapperLogin(blob.toString("base64"));
-    mainLog.info("wrapper: sign-in remembered");
+    const existing = fs.readFileSync(file);
+    if (existing.length === 32) return existing;
+  } catch {
+    /* first run */
+  }
+  const key = randomBytes(32);
+  fs.writeFileSync(file, key, { mode: 0o600 });
+  return key;
+}
+
+/** Seal the sign-in: OS keyring when there is one, an encrypted file otherwise. */
+function sealLogin(json: string): string | null {
+  try {
+    if (safeStorage.isEncryptionAvailable()) {
+      return `keyring:${safeStorage.encryptString(json).toString("base64")}`;
+    }
+    const iv = randomBytes(12);
+    const cipher = createCipheriv("aes-256-gcm", localVaultKey(), iv);
+    const body = Buffer.concat([cipher.update(json, "utf8"), cipher.final()]);
+    return `local:${Buffer.concat([iv, cipher.getAuthTag(), body]).toString("base64")}`;
   } catch (error) {
-    mainLog.warn(`wrapper: could not remember the sign-in: ${errorMessage(error)}`);
+    mainLog.warn(`wrapper: could not seal the sign-in: ${errorMessage(error)}`);
+    return null;
   }
 }
 
+/** Reverse `sealLogin`. */
+function openLogin(blob: string): string | null {
+  try {
+    if (blob.startsWith("keyring:")) {
+      return safeStorage.decryptString(Buffer.from(blob.slice("keyring:".length), "base64"));
+    }
+    if (blob.startsWith("local:")) {
+      const raw = Buffer.from(blob.slice("local:".length), "base64");
+      const iv = raw.subarray(0, 12);
+      const tag = raw.subarray(12, 28);
+      const body = raw.subarray(28);
+      const decipher = createDecipheriv("aes-256-gcm", localVaultKey(), iv);
+      decipher.setAuthTag(tag);
+      return Buffer.concat([decipher.update(body), decipher.final()]).toString("utf8");
+    }
+  } catch (error) {
+    mainLog.warn(`wrapper: stored sign-in is unreadable: ${errorMessage(error)}`);
+  }
+  return null;
+}
+
+function saveWrapperLogin(email: string, password: string): void {
+  if (!email || !password) return;
+  if (!getAudioRememberLogin()) return;
+  const blob = sealLogin(JSON.stringify({ email, password }));
+  if (!blob) return;
+  setAudioWrapperLogin(blob);
+  mainLog.info(
+    `wrapper: sign-in remembered (${
+      safeStorage.isEncryptionAvailable() ? "OS keyring" : "encrypted local file"
+    })`,
+  );
+}
+
 function loadWrapperLogin(): { email: string; password: string } | null {
+  if (!getAudioRememberLogin()) return null;
   const stored = getAudioWrapperLogin();
   if (!stored) return null;
+  const json = openLogin(stored);
+  if (!json) {
+    setAudioWrapperLogin(null);
+    return null;
+  }
   try {
-    const json = safeStorage.decryptString(Buffer.from(stored, "base64"));
     const parsed = JSON.parse(json) as { email?: string; password?: string };
     if (!parsed.email || !parsed.password) return null;
     return { email: parsed.email, password: parsed.password };
-  } catch (error) {
-    mainLog.warn(`wrapper: stored sign-in is unreadable: ${errorMessage(error)}`);
+  } catch {
     setAudioWrapperLogin(null);
     return null;
   }
 }
 
-/** Start a fresh wrapper from the remembered sign-in, if there is one. */
 async function restoreWrapperLogin(): Promise<void> {
   if (!wrapperService || wrapperService.status().state === "running") return;
   // A wrapper from an earlier run may still be serving; adopting it costs

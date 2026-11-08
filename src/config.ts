@@ -54,6 +54,8 @@ interface StoreSchema {
   'audio.keyToken': string | null;
   /** Encrypted wrapper sign-in (base64), written by the main process. */
   'audio.wrapperLogin': string | null;
+  /** Whether Lidra keeps the wrapper sign-in so lossless starts unattended. */
+  'audio.rememberLogin': boolean;
   'audio.ffmpegPath': string | null;
   'audio.emeShim': boolean;
   'audio.decryptorService': string;
@@ -459,6 +461,16 @@ export function getAudioKeyToken(): string | null | undefined {
 /** Persist the optional bearer token for an HTTP key service. */
 export function setAudioKeyToken(token: string | null): void {
   setConfigValue('audio.keyToken', token);
+}
+
+/** Keep the wrapper sign-in so a restart needs no typing. */
+export function getAudioRememberLogin(): boolean {
+  return getConfigValue('audio.rememberLogin', true);
+}
+
+/** Persist whether the wrapper sign-in is kept. */
+export function setAudioRememberLogin(remember: boolean): void {
+  setConfigValue('audio.rememberLogin', remember);
 }
 
 /**
