@@ -12,7 +12,8 @@ import type { SessionCredentials } from "./tokens";
 
 const catalogLog = log.scope("audio.catalog");
 
-const API_ROOT = "https://api.music.apple.com/v1";
+/** The web client's host; `api.music.apple.com` remains as a fallback. */
+const API_ROOTS = ["https://amp-api.music.apple.com/v1", "https://api.music.apple.com/v1"];
 const REQUEST_TIMEOUT_MS = 15_000;
 
 export interface SongAsset {
@@ -106,22 +107,26 @@ export async function resolveSong(
     throw new CatalogError("no media user token: sign in to Apple Music first");
   }
 
-  const url = new URL(`${API_ROOT}/catalog/${encodeURIComponent(storefront)}/songs/${id}`);
-  url.searchParams.set("extend", "extendedAssetUrls");
-
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  let response: Response;
+  let response: Response | null = null;
+  let lastStatus = 0;
   try {
-    response = await fetchImpl(url, {
-      headers: {
-        Authorization: `Bearer ${credentials.developerToken}`,
-        "Media-User-Token": credentials.mediaUserToken,
-        Origin: "https://music.apple.com",
-        Accept: "application/json",
-      },
-      signal: controller.signal,
-    });
+    for (const root of API_ROOTS) {
+      const url = new URL(`${root}/catalog/${encodeURIComponent(storefront)}/songs/${id}`);
+      url.searchParams.set("extend", "extendedAssetUrls");
+      response = await fetchImpl(url, {
+        headers: {
+          Authorization: `Bearer ${credentials.developerToken}`,
+          "Media-User-Token": credentials.mediaUserToken,
+          Origin: "https://music.apple.com",
+          Accept: "application/json",
+        },
+        signal: controller.signal,
+      });
+      lastStatus = response.status;
+      if (response.ok) break;
+    }
   } catch (error) {
     throw new CatalogError(
       `catalog request failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -130,8 +135,8 @@ export async function resolveSong(
     clearTimeout(timer);
   }
 
-  if (!response.ok) {
-    throw new CatalogError(`catalog request returned ${response.status}`, response.status);
+  if (!response || !response.ok) {
+    throw new CatalogError(`catalog request returned ${lastStatus}`, lastStatus);
   }
 
   const payload = (await response.json()) as AppleSongResponse;

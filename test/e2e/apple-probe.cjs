@@ -45,8 +45,12 @@ async function main() {
   let developerToken = null;
   let mediaUserToken = null;
   ses.webRequest.onBeforeSendHeaders(
-    { urls: ["https://api.music.apple.com/*"] },
+    { urls: ["https://*.music.apple.com/*"] },
     (details, callback) => {
+      if (!/^https:\/\/(amp-)?api\.music\.apple\.com\//.test(details.url)) {
+        callback({ requestHeaders: details.requestHeaders });
+        return;
+      }
       const auth = headerValue(details.requestHeaders, "Authorization");
       if (auth && auth.startsWith("Bearer ")) developerToken = auth.slice(7);
       const mut = headerValue(details.requestHeaders, "Media-User-Token");
@@ -60,6 +64,9 @@ async function main() {
 
   const win = new BrowserWindow({ show: false, webPreferences: { partition: "persist:lidra" } });
   await win.loadURL("https://music.apple.com/us/browse");
+  // Force catalog traffic: the page only calls api.music.apple.com when it has
+  // something to load, and that request is where the developer token appears.
+  win.loadURL("https://music.apple.com/us/search?term=daft%20punk").catch(() => {});
 
   const deadline = Date.now() + 25000;
   while ((!developerToken || !mediaUserToken) && Date.now() < deadline) {
@@ -82,7 +89,7 @@ async function main() {
   const storefront = "us";
 
   const searchResponse = await fetch(
-    `https://api.music.apple.com/v1/catalog/${storefront}/search?term=${encodeURIComponent(term)}&types=songs&limit=3`,
+    `https://amp-api.music.apple.com/v1/catalog/${storefront}/search?term=${encodeURIComponent(term)}&types=songs&limit=3`,
     {
       headers: {
         Authorization: `Bearer ${developerToken}`,
@@ -141,6 +148,17 @@ async function main() {
           });
           const initBytes = Buffer.from(await initResponse.arrayBuffer());
           entry.initSegment = { bytes: initBytes.length, status: initResponse.status };
+          require("node:fs").writeFileSync("/tmp/lidra-init.bin", initBytes);
+          try {
+            const seg = await fetchStream(media.segments[0].uri, {
+              range: rangeHeader(media.segments[0].byterange),
+            });
+            const segBytes = Buffer.from(await seg.arrayBuffer());
+            require("node:fs").writeFileSync("/tmp/lidra-seg0.bin", segBytes);
+            entry.firstSegmentBytes = segBytes.length;
+          } catch (error) {
+            entry.segmentProbe = String(error.message || error);
+          }
           try {
             const { parseInit } = require(path.join(dist, "audio", "mp4", "init.js"));
             const info = parseInit(initBytes);
@@ -155,6 +173,46 @@ async function main() {
           } catch (error) {
             entry.encryption = { parseError: String(error) };
           }
+        }
+
+String(0);
+        // Apple serves a different DRM system per client: Chrome-flavoured
+        // requests get Widevine PSSH, Safari-flavoured ones get FairPlay. Ask
+        // twice so the report shows which key URI each client would receive.
+        try {
+          const safariUA =
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15";
+          const uaResponse = await fetch(
+            `https://amp-api.music.apple.com/v1/catalog/${storefront}/songs/${id}?extend=extendedAssetUrls`,
+            {
+              headers: {
+                Authorization: `Bearer ${developerToken}`,
+                "Media-User-Token": mediaUserToken,
+                Origin: "https://music.apple.com",
+                "User-Agent": safariUA,
+                Accept: "application/json",
+              },
+            },
+          );
+          const uaJson = await uaResponse.json();
+          const uaManifest = uaJson?.data?.[0]?.attributes?.extendedAssetUrls?.enhancedHls;
+          entry.safariManifestSame = uaManifest === asset.manifestUrl;
+          if (uaManifest) {
+            const uaMaster = await fetchText(uaManifest);
+            const uaBest = selectVariant(rankVariants(parseMasterPlaylist(uaMaster, uaManifest)), null);
+            if (uaBest) {
+              const uaPlaylistResponse = await fetch(uaBest.uri, {
+                headers: {
+                  "User-Agent":
+                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
+                },
+              });
+              const uaMedia = parseMediaPlaylist(await uaPlaylistResponse.text(), uaBest.uri);
+              entry.safariKeyUri = uaMedia.segments[0]?.key?.uri?.slice(0, 120) ?? null;
+            }
+          }
+        } catch (error) {
+          entry.safariProbe = String(error.message || error);
         }
 
         if (media.segments[0]?.key?.uri) {

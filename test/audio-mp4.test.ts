@@ -88,17 +88,22 @@ function encryptSampleTest(plain: Buffer, key: Buffer, iv: Buffer, info: SampleE
 // Builders
 
 function buildTenc(info: { scheme:string, kid:Buffer, perIv:number, constIv:Buffer|null, crypt:number, skip:number }): Buffer {
+  // ISO/IEC 23001-7 layout, verified against a real Apple Music init segment:
+  // v1 = reserved(8), crypt(4)|skip(4), isProtected(8), perSampleIvSize(8),
+  //      KID(16), constantIvSize(8), constantIv[...]
+  const version = info.scheme === "cbcs" ? 1 : 0;
   const payloadParts: Buffer[] = [];
+  payloadParts.push(Buffer.from([0])); // reserved
+  if (version === 1) {
+    payloadParts.push(Buffer.from([((info.crypt & 0x0f) << 4) | (info.skip & 0x0f)]));
+  }
   payloadParts.push(Buffer.from([1])); // isProtected
   payloadParts.push(Buffer.from([info.perIv]));
   payloadParts.push(info.kid);
-  const version = info.scheme==="cbcs" ? 1 : 0;
-  if(version===1){
+  if (version === 1 && info.perIv === 0) {
     const cIv = info.constIv ?? Buffer.alloc(0);
     payloadParts.push(Buffer.from([cIv.length]));
-    if(cIv.length) payloadParts.push(cIv);
-    payloadParts.push(Buffer.from([info.crypt]));
-    payloadParts.push(Buffer.from([info.skip]));
+    if (cIv.length) payloadParts.push(cIv);
   }
   return makeFullBoxTest("tenc", version, 0, Buffer.concat(payloadParts));
 }

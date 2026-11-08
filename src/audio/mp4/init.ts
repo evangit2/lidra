@@ -150,58 +150,46 @@ function parseTenc(buf: Buffer, tenc: ReturnType<typeof parseBoxes>[number]): {
   crypt: number;
   skip: number;
 } {
-  if (tenc.payloadSize < 4) throw new Error("tenc box too small");
-  const version = buf.readUInt8(tenc.payloadOffset);
-  // const flags = (buf.readUInt8(tenc.payloadOffset+1)<<16)|(buf.readUInt8(tenc.payloadOffset+2)<<8)|buf.readUInt8(tenc.payloadOffset+3);
-  let off = tenc.payloadOffset + 4; // after version/flags
-  if (off + 1 + 1 + 16 > tenc.payloadOffset + tenc.payloadSize) {
-    throw new Error("tenc missing mandatory fields");
+  // ISO/IEC 23001-7 layout, byte for byte:
+  //   reserved(8) [ version 1: crypt(4)|skip(4) ] isProtected(8)
+  //   perSampleIvSize(8) KID(16)
+  //   [ isProtected && perSampleIvSize == 0: constantIvSize(8) constantIv[...] ]
+  const start = tenc.payloadOffset;
+  const end = tenc.payloadOffset + tenc.payloadSize;
+  // v0 minimum: version/flags(4) reserved(1) isProtected(1) ivSize(1) KID(16)
+  if (tenc.payloadSize < 4 + 19) throw new Error("tenc box too small");
+  const version = buf.readUInt8(start);
+  let off = start + 4; // version + flags
+
+  off += 1; // reserved
+  let crypt = 0;
+  let skip = 0;
+  if (version >= 1) {
+    const pattern = buf.readUInt8(off);
+    crypt = (pattern >> 4) & 0x0f;
+    skip = pattern & 0x0f;
+    off += 1;
   }
-  // default_IsEncrypted 1 byte? Actually default_isProtected ?
-  // spec: for version 0/1: first byte after header is isProtected? We'll skip 1.
-  const _isProtected = buf.readUInt8(off);
+  const isProtected = buf.readUInt8(off);
   off += 1;
-  const perIv = buf.readUInt8(off);
+  const perSampleIvSize = buf.readUInt8(off);
   off += 1;
+  if (off + 16 > end) throw new Error("tenc missing default_KID");
   const kid = Buffer.from(buf.subarray(off, off + 16));
   off += 16;
 
   let constantIv: Buffer | null = null;
-  let crypt = 0;
-  let skipBlocks = 0;
-
-  if (version >= 1) {
-    if (off >= tenc.payloadOffset + tenc.payloadSize) {
-      // No more bytes: treat as no crypt/skip and no constant IV
-    } else {
-      const constIvSize = buf.readUInt8(off);
-      off += 1;
-      if (constIvSize > 0) {
-        if (off + constIvSize > tenc.payloadOffset + tenc.payloadSize) {
-          throw new Error("tenc constant IV truncated");
-        }
-        constantIv = Buffer.from(buf.subarray(off, off + constIvSize));
-        off += constIvSize;
-      }
-      const remaining = tenc.payloadOffset + tenc.payloadSize - off;
-      if (remaining === 1) {
-        const b = buf.readUInt8(off);
-        crypt = (b >> 4) & 0x0f;
-        skipBlocks = b & 0x0f;
-        off += 1;
-      } else if (remaining >= 2) {
-        crypt = buf.readUInt8(off);
-        skipBlocks = buf.readUInt8(off + 1);
-        off += 2;
-      } else if (remaining === 0) {
-        // leave 0
-      } else {
-        throw new Error("tenc crypt/skip malformed");
-      }
-      _isProtected; // unused
+  if (isProtected === 1 && perSampleIvSize === 0 && off < end) {
+    const size = buf.readUInt8(off);
+    off += 1;
+    if (size > 0) {
+      if (off + size > end) throw new Error("tenc constant IV truncated");
+      constantIv = Buffer.from(buf.subarray(off, off + size));
+      off += size;
     }
   }
-  return { perSampleIvSize: perIv, kid, constantIv, crypt, skip: skipBlocks };
+
+  return { perSampleIvSize, kid, constantIv, crypt, skip };
 }
 
 function parseSchemeType(buf: Buffer, schm: ReturnType<typeof parseBoxes>[number]): string {

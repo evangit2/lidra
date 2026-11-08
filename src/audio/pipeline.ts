@@ -288,9 +288,8 @@ export class TrackPipeline {
 
   private async resolveKey(keyUri: string | undefined): Promise<Buffer | null> {
     if (!keyUri) return null;
-    if (!keyUri.startsWith("skd://")) {
-      throw new Error(`unsupported key URI scheme: ${keyUri}`);
-    }
+    // Apple hands out `skd://` for FairPlay and `data:…` PSSH blobs for
+    // Widevine. The key service understands both; Lidra only needs the key.
     return this.options.keyCache.get({
       adamId: this.asset.id,
       keyUri,

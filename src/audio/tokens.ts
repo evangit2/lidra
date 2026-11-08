@@ -17,11 +17,12 @@ export interface SessionCredentials {
   mediaUserToken: string | null;
 }
 
-const API_HOST = "api.music.apple.com";
+/** Both hosts serve the same API: `amp-api` is what the web client uses. */
+const API_HOSTS = new Set(["api.music.apple.com", "amp-api.music.apple.com"]);
 
 export function isAppleMusicApiRequest(url: string): boolean {
   try {
-    return new URL(url).hostname === API_HOST;
+    return API_HOSTS.has(new URL(url).hostname);
   } catch {
     return false;
   }
@@ -52,8 +53,12 @@ export class CredentialStore {
 
   constructor(private readonly session: Session) {
     session.webRequest.onBeforeSendHeaders(
-      { urls: [`https://${API_HOST}/*`] },
+      { urls: ["https://*.music.apple.com/*"] },
       (details, callback) => {
+        if (!isAppleMusicApiRequest(details.url)) {
+          callback({ requestHeaders: details.requestHeaders });
+          return;
+        }
         const authorization = headerValue(details.requestHeaders, "Authorization");
         if (authorization?.startsWith("Bearer ")) {
           this.setDeveloperToken(authorization.slice("Bearer ".length).trim());

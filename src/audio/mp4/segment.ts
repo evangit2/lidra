@@ -206,44 +206,43 @@ interface TrunInfo {
 }
 
 function parseTrun(buf: Buffer, box: ReturnType<typeof parseBoxes>[number]): TrunInfo {
+  // ISO/IEC 14496-12 track run box order:
+  //   version/flags, sample_count, [data_offset], [first_sample_flags],
+  //   then per-sample fields in flag order.
   const payloadOffset = box.payloadOffset;
   const flags = box.flags ?? 0;
   const version = box.version ?? 0;
+  const end = box.payloadOffset + box.payloadSize;
   let off = payloadOffset + 4;
+  if (off + 4 > end) throw new Error("trun missing sample_count");
+  const sampleCount = buf.readUInt32BE(off);
+  off += 4;
   let dataOffset: number | null = null;
   if (flags & 0x000001) {
+    if (off + 4 > end) throw new Error("trun missing data_offset");
     dataOffset = buf.readInt32BE(off);
     off += 4;
   }
   if (flags & 0x000004) {
-    off += 4;
+    off += 4; // first_sample_flags
   }
-  const sampleCount = buf.readUInt32BE(off);
-  off += 4;
   const sampleSizes: number[] = [];
   for (let i = 0; i < sampleCount; i++) {
-    let size = 0;
-    let hasSize = false;
-    if (flags & 0x000100) {
-      off += 4;
-    }
+    if (flags & 0x000100) off += 4; // sample_duration
     if (flags & 0x000200) {
-      size = buf.readUInt32BE(off);
-      off += 4;
-      hasSize = true;
-    }
-    if (flags & 0x000400) {
+      if (off + 4 > end) throw new Error("trun overrun");
+      sampleSizes.push(buf.readUInt32BE(off));
       off += 4;
     }
+    if (flags & 0x000400) off += 4; // sample_flags
     if (flags & 0x000800) {
-      if (version === 0) off += 4;
-      else off += 4;
+      // sample_composition_time_offset: unsigned in v0, signed in v1
+      off += version === 0 ? 4 : 4;
     }
-    if (hasSize) sampleSizes.push(size);
-    else {
-      throw new Error("trun missing sample size");
-    }
-    if (off > box.payloadOffset + box.payloadSize) throw new Error("trun overrun");
+    if (off > end) throw new Error("trun overrun");
+  }
+  if (sampleSizes.length === 0) {
+    throw new Error("trun carries no sample sizes; default_sample_size is unsupported");
   }
   return { dataOffset, sampleSizes };
 }
