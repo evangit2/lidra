@@ -896,6 +896,29 @@ const AUTH_FRAME_HOSTS = new Set<string>(
   allServices().flatMap((svc) => [...svc.authFrameHosts]),
 );
 const AUTH_FRAME_LOG_PREFIX = "[lidra] auth-frame hide:";
+const AUTH_CREDS_PREFIX = "[lidra] auth-creds:";
+const AUTH_CODE_PREFIX = "[lidra] auth-code:";
+
+/**
+ * Credentials captured from Apple's own sign-in frame, kept only long enough to
+ * complete the wrapper's app-session login. Never logged, never persisted.
+ */
+let pendingAuth: { email: string; password: string } | null = null;
+let wrapperSignInStarted = false;
+
+async function forwardAuthToWrapper(email: string, password: string, code?: string): Promise<void> {
+  if (!email || !password || wrapperSignInStarted || !wrapperService) return;
+  wrapperSignInStarted = true;
+  try {
+    if (code && code.trim()) await writeWrapperCode(code.trim());
+    mainLog.info("wrapper: signing in with the credentials from the Apple sign-in form");
+    const status = await wrapperService.startWithLogin(email, password);
+    mainLog.info(`wrapper sign-in ${status.state}${status.detail ? ` (${status.detail})` : ""}`);
+  } catch (error) {
+    mainLog.warn(`wrapper sign-in failed: ${errorMessage(error)}`);
+    wrapperSignInStarted = false;
+  }
+}
 
 // assets/authFrameFix.js hides the passkey and "Sign in with iPhone" routes in
 // Apple's sign-in iframe, and reports what it hid back over console-message,
@@ -929,6 +952,23 @@ function setupAuthFrameInjection(win: BrowserWindow, script: string): void {
   );
 
   win.webContents.on("console-message", (event) => {
+    // Credential events from Apple's sign-in frame: handle first, never log.
+    if (event.message.startsWith(AUTH_CREDS_PREFIX) || event.message.startsWith(AUTH_CODE_PREFIX)) {
+      const isCreds = event.message.startsWith(AUTH_CREDS_PREFIX);
+      const raw = event.message.slice((isCreds ? AUTH_CREDS_PREFIX : AUTH_CODE_PREFIX).length);
+      try {
+        const value = JSON.parse(raw) as { email?: string; password?: string; code?: string };
+        if (isCreds) {
+          pendingAuth = { email: String(value.email ?? ""), password: String(value.password ?? "") };
+          if (value.code) void forwardAuthToWrapper(pendingAuth.email, pendingAuth.password, value.code);
+        } else if (pendingAuth && value.code) {
+          void forwardAuthToWrapper(pendingAuth.email, pendingAuth.password, value.code);
+        }
+      } catch {
+        authLog.warn("could not parse captured credentials");
+      }
+      return;
+    }
     if (!event.message.startsWith(AUTH_FRAME_LOG_PREFIX)) return;
     const frameHost = (() => {
       try {

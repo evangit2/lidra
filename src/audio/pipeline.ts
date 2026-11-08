@@ -11,6 +11,7 @@
  * makes naive implementations feel slow.
  */
 import crypto from "node:crypto";
+import net from "node:net";
 import fs from "node:fs";
 import path from "node:path";
 import log from "electron-log/main";
@@ -87,6 +88,27 @@ export interface PreparedTrack {
   variant: AudioVariant;
 }
 
+/** True when `host:port` accepts a connection within `timeoutMs`. */
+function socketOpen(address: string | undefined, timeoutMs = 600): Promise<boolean> {
+  const trimmed = address?.trim();
+  if (!trimmed) return Promise.resolve(false);
+  const colon = trimmed.lastIndexOf(":");
+  const port = Number.parseInt(trimmed.slice(colon + 1), 10);
+  if (colon === -1 || !Number.isInteger(port)) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    const socket = net.createConnection({ host: trimmed.slice(0, colon) || "127.0.0.1", port });
+    const done = (value: boolean): void => {
+      socket.removeAllListeners();
+      socket.destroy();
+      resolve(value);
+    };
+    socket.setTimeout(timeoutMs);
+    socket.once("connect", () => done(true));
+    socket.once("timeout", () => done(false));
+    socket.once("error", () => done(false));
+  });
+}
+
 /** Chromium cannot decode these, so they are repackaged to FLAC. */
 export function transformFor(codecs: string): AudioTransform {
   const codec = codecs.toLowerCase();
@@ -130,6 +152,8 @@ export class TrackPipeline {
   private failure: string | undefined;
   private variant: AudioVariant | null = null;
   private readonly spatial: SpatialMode;
+  /** Mode actually used for this track: a wrapper that is down is a key source. */
+  private effectiveMode: "key" | "wrapper";
   private bytesIn = 0;
   private readonly startedAt = Date.now();
   private transcoder: Transcoder | null = null;
@@ -141,6 +165,7 @@ export class TrackPipeline {
     this.asset = options.asset;
     this.preference = options.preference;
     this.spatial = options.spatial ?? "bed";
+    this.effectiveMode = options.decryptMode ?? "key";
     this.id = pipelineId(options.asset, null);
     this.mount = `/track/${this.id}`;
     this.directory = path.join(options.cacheRoot, this.id);
@@ -203,6 +228,16 @@ export class TrackPipeline {
       return { directory: this.directory, mount: this.mount, variant: this.variant };
     }
 
+    if (this.effectiveMode === "wrapper") {
+      const open = await socketOpen(this.options.decryptorService);
+      if (!open) {
+        pipelineLog.warn(
+          `wrapper is not answering on ${this.options.decryptorService ?? "?"}; using the key source for this track`,
+        );
+        this.effectiveMode = "key";
+      }
+    }
+
     const master = await this.masterManifest();
     const variants = rankVariants(parseMasterPlaylist(master.text, master.baseUrl));
     if (variants.length === 0) {
@@ -215,7 +250,7 @@ export class TrackPipeline {
     // without one the only key Apple offers a web session is Widevine on the
     // 256 kbps web-playback asset, so fall back to it rather than fail at the
     // first segment.
-    if (this.options.decryptMode !== "wrapper" && this.options.webPlayback) {
+    if (this.effectiveMode !== "wrapper" && this.options.webPlayback) {
       const keyUri = await this.firstKeyUri(variant);
       if (keyUri.startsWith("skd://")) {
         const fallback = await this.options.webPlayback(this.asset.id).catch(() => null);
@@ -350,14 +385,29 @@ export class TrackPipeline {
     keyUri: string,
     info: Parameters<typeof decryptSegment>[2],
   ): Promise<Buffer> {
-    if (this.options.decryptMode === "wrapper") {
+    if (this.effectiveMode === "wrapper") {
       const service = this.options.decryptorService?.trim();
       if (!service) throw new Error("wrapper decrypt mode needs a decryptor service address");
       const decryptor = (this.legacy ??= new LegacyDecryptor(service));
-      return decryptSegmentLegacy(segment, decryptor, {
-        adamId: this.asset.id,
-        keyUri,
-      });
+      try {
+        return await decryptSegmentLegacy(segment, decryptor, {
+          adamId: this.asset.id,
+          keyUri,
+        });
+      } catch (error) {
+        // A wrapper that is configured but not running (not signed in yet, or
+        // stopped) must not take playback down with it: fall back to the key
+        // source, which reaches the Widevine rendition.
+        const key = await this.resolveKey(keyUri);
+        if (!key) throw error;
+        pipelineLog.warn(
+          `wrapper unavailable (${error instanceof Error ? error.message : String(error)}); decrypting with the key source`,
+        );
+        this.effectiveMode = "key";
+        this.legacy?.close();
+        this.legacy = null;
+        return decryptSegment(segment, key, info);
+      }
     }
     const key = await this.resolveKey(keyUri);
     return key ? decryptSegment(segment, key, info) : segment;
