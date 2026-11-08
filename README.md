@@ -1,5 +1,5 @@
 <h1 align="center">
-  <img src="assets/lidra-logo.png?v=5" width="128" height="128" alt="Lidra">
+  <img src="assets/lidra-logo.png?v=6" width="128" height="128" alt="Lidra">
   <br />
   Lidra
 </h1>
