@@ -1,8 +1,5 @@
 <h1 align="center">
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/lidra-logo.png?v=3">
-  <img src="assets/lidra-logo-light.png?v=3" width="128" height="128" alt="Lidra">
-</picture>
+  <img src="assets/lidra-logo.png?v=4" width="128" height="128" alt="Lidra">
   <br />
   Lidra
 </h1>
