@@ -73,6 +73,57 @@ export function parsePssh(box: Buffer): PsshData {
   return { systemId, keyIds, data };
 }
 
+/** First content KID advertised by the CENC header, or by the box key list. */
+export function psshKeyId(parsed: PsshData): Buffer | null {
+  const header = parseProtoHeaderKeyId(parsed.data);
+  if (header) return header;
+  return parsed.keyIds[0] ?? null;
+}
+
+function parseProtoHeaderKeyId(data: Buffer): Buffer | null {
+  // WidevineCencHeader: field 1 algorithm, field 2 key_id (repeated), 3 provider,
+  // 4 content_id, 5 policy.
+  let offset = 0;
+  while (offset < data.length) {
+    const tag = data[offset] as number;
+    offset += 1;
+    const field = tag >> 3;
+    const wire = tag & 0x07;
+    if (wire === 2) {
+      let length = 0;
+      let shift = 0;
+      let byte: number;
+      do {
+        if (offset >= data.length) return null;
+        byte = data[offset] as number;
+        offset += 1;
+        length |= (byte & 0x7f) << shift;
+        shift += 7;
+      } while (byte & 0x80);
+      if (offset + length > data.length) return null;
+      if (field === 2 && length === 16) return Buffer.from(data.subarray(offset, offset + 16));
+      offset += length;
+    } else if (wire === 0) {
+      while (offset < data.length && ((data[offset] as number) & 0x80) !== 0) offset += 1;
+      offset += 1;
+    } else {
+      return null;
+    }
+  }
+  return null;
+}
+
+/**
+ * Shape the `uri` field the way Apple's own clients send it: the CENC header
+ * with the 32-byte placeholder that a pssh box header would occupy. Apple
+ * accepts this form for `data:` URIs and it is what the reference downloader
+ * sends, so Lidra matches it byte for byte.
+ */
+export function buildLicenseKeyUri(cencHeader: Buffer): string {
+  const prefix = Buffer.from("0123456789abcdef0123456789abcdef", "ascii");
+  return `data:;base64,${Buffer.concat([prefix, cencHeader]).toString("base64")}`;
+}
+
 /** Parse a key URI, insisting that it describes a Widevine-protected track. */
 export function parseWidevinePssh(keyUri: string): PsshData {
   const parsed = parsePssh(decodeKeyUri(keyUri));

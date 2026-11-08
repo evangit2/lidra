@@ -16,7 +16,7 @@ import crypto from "node:crypto";
 import log from "electron-log/main";
 import { aesCmac } from "./cmac";
 import { ProtoWriter, parseProto, firstBytes, firstVarint, allBytes } from "./protobuf";
-import { parseWidevinePssh, PsshError } from "./pssh";
+import { parseWidevinePssh, buildLicenseKeyUri, psshKeyId, PsshError } from "./pssh";
 import type { WidevineDevice } from "./device";
 
 const licenseLog = log.scope("audio.widevine");
@@ -210,11 +210,14 @@ export async function acquireContentKey(options: LicenseRequestOptions): Promise
   }
 
   const { signed, message } = buildLicenseRequest(device, pssh.data);
+  const kid = psshKeyId(pssh);
 
   const body = {
     challenge: signed.toString("base64"),
     "key-system": "com.widevine.alpha",
-    uri: keyUri,
+    // Apple is sent the CENC header in the same shape its own clients use, with
+    // the KID the playlist declared.
+    uri: buildLicenseKeyUri(pssh.data),
     adamId,
     isLibrary: false,
     "user-initiated": true,
@@ -264,6 +267,8 @@ export async function acquireContentKey(options: LicenseRequestOptions): Promise
   if (!payload.license) throw new LicenseError("licence response carried no licence");
 
   const key = extractContentKey(Buffer.from(payload.license, "base64"), device, message);
-  licenseLog.info(`licence granted for ${adamId}`);
+  licenseLog.info(
+    `licence granted for ${adamId} (kid ${kid ? kid.toString("hex") : "unknown"})`,
+  );
   return key;
 }

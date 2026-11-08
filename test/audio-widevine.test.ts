@@ -2,7 +2,14 @@ import crypto from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { aesCmac } from "../src/audio/widevine/cmac";
 import { parseWvd, parseClientAndKey, DeviceError } from "../src/audio/widevine/device";
-import { parsePssh, parseWidevinePssh, decodeKeyUri, PsshError } from "../src/audio/widevine/pssh";
+import {
+  parsePssh,
+  parseWidevinePssh,
+  decodeKeyUri,
+  psshKeyId,
+  buildLicenseKeyUri,
+  PsshError,
+} from "../src/audio/widevine/pssh";
 import {
   buildLicenseRequest,
   deriveEncryptionKey,
@@ -149,6 +156,20 @@ describe("pssh parsing", () => {
     const parsed = parsePssh(buildPssh(keyId, "s1/e1", 1));
     expect(parsed.keyIds).toHaveLength(1);
     expect(parsed.keyIds[0].equals(keyId)).toBe(true);
+  });
+
+  it("exposes the KID the playlist declared", () => {
+    const parsed = parseWidevinePssh(`data:;base64,${buildPssh(keyId, "s1/e1").toString("base64")}`);
+    expect(psshKeyId(parsed)?.equals(keyId)).toBe(true);
+  });
+
+  it("shapes the licence uri like Apple's own clients", () => {
+    const cencHeader = new ProtoWriter().varint(1, 1).bytes(2, keyId).finish();
+    const uri = buildLicenseKeyUri(cencHeader);
+    expect(uri.startsWith("data:;base64,")).toBe(true);
+    const decoded = decodeKeyUri(uri);
+    expect(decoded.subarray(0, 32).toString("ascii")).toBe("0123456789abcdef0123456789abcdef");
+    expect(decoded.subarray(32).equals(cencHeader)).toBe(true);
   });
 
   it("rejects a FairPlay-style key URI", () => {
