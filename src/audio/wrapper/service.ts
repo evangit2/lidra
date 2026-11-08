@@ -42,6 +42,8 @@ export interface WrapperServiceOptions {
   probe?: (address: string) => Promise<boolean>;
   /** Called whenever the state changes. */
   onChange?: (status: WrapperStatus) => void;
+  /** Called once per start when the login blocks on a 2FA code. */
+  onNeedsCode?: () => void;
   /** How long to wait for the decrypt socket before giving up. */
   startTimeoutMs?: number;
 }
@@ -83,6 +85,8 @@ export class WrapperService {
   private child: ChildProcess | null = null;
   private state: WrapperState = "stopped";
   private detail = "";
+  /** One prompt per run, not one per line of wrapper output. */
+  private codePrompted = false;
   /** Command used for the one-shot login run, when one is in flight. */
   private loginOverride: string | null = null;
   /** Longer deadline while an interactive login runs (auth + lease). */
@@ -119,6 +123,7 @@ export class WrapperService {
     }
     if (this.child && this.state === "running") return this.status();
 
+    this.codePrompted = false;
     this.setState("starting", "launching");
     const spawnImpl = this.options.spawnImpl ?? spawn;
     let child: ChildProcess;
@@ -140,7 +145,17 @@ export class WrapperService {
         const trimmed = line.trim();
         if (!trimmed) continue;
         this.detail = trimmed.slice(0, 200);
-        if (/listening|ready/i.test(trimmed)) wrapperLog.info(`wrapper: ${trimmed}`);
+        if (/2fa|two-factor|verification code/i.test(trimmed)) {
+          if (!this.codePrompted) {
+            this.codePrompted = true;
+            this.options.onNeedsCode?.();
+          }
+          // The wrapper blocks until the code is written to its rootfs; say so in
+          // the log so the app can prompt instead of stalling silently.
+          wrapperLog.warn(`wrapper needs a 2FA code: ${trimmed.slice(0, 120)}`);
+        } else if (/listening|ready/i.test(trimmed)) {
+          wrapperLog.info(`wrapper: ${trimmed}`);
+        }
       }
     };
     child.stdout?.on("data", note);

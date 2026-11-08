@@ -80,6 +80,7 @@ import { createWidevineProvider } from "./audio/widevine/provider";
 import { webPlaybackMaster } from "./audio/webplayback";
 import { WrapperService } from "./audio/wrapper/service";
 import { readWrapperSession, wrapperBaseDir } from "./audio/wrapper/session";
+import { dismissTwoFactorPrompt, showTwoFactorPrompt } from "./twoFactorWindow";
 import { initAudioBridge } from "./audio/bridge";
 import { findFfmpeg } from "./audio/transcode";
 import {
@@ -600,8 +601,28 @@ function initAudioEngine(ses: Electron.Session): AudioEngine {
     command: expandWrapperCommand(getAudioWrapperCommand()),
     decryptor: getAudioDecryptorService() || "127.0.0.1:10020",
     manifest: getAudioManifestService() || "127.0.0.1:20020",
+    // Apple sends the code to the user's devices, and the wrapper can only take
+    // it as a file, so ask for it right here instead of making the user hunt for
+    // a settings field while a login sits waiting.
+    onNeedsCode: () => {
+      const mainWindow =
+        BrowserWindow.getAllWindows().find((window) =>
+          window.webContents.getURL().includes("music.apple.com"),
+        ) ?? null;
+      void showTwoFactorPrompt(mainWindow).then(async (code) => {
+        if (!code) {
+          mainLog.info("2FA prompt dismissed without a code");
+          return;
+        }
+        await writeWrapperCode(code);
+        mainLog.info("2FA code handed to the wrapper login");
+      });
+    },
     onChange: (status) => {
       mainLog.info(`wrapper ${status.state}${status.detail ? ` (${status.detail})` : ""}`);
+      if (status.state === "running" || status.state === "stopped" || status.state === "error") {
+        dismissTwoFactorPrompt();
+      }
       if (status.state !== "running") return;
       const ses = session.fromPartition("persist:lidra");
       void applyWrapperSession(ses).then((applied) => {
@@ -619,6 +640,13 @@ function initAudioEngine(ses: Electron.Session): AudioEngine {
   ipcMain.handle("lidra:wrapper-status", () => wrapper.status());
   ipcMain.handle("lidra:wrapper-signin", async (_event, payload: unknown) => {
     const { email, password, code } = (payload ?? {}) as Record<string, string>;
+    // A code on its own is the retry path: the wrapper is already running its
+    // login and blocked on that file, so nothing else needs to be typed again.
+    if (typeof code === "string" && code.trim() && (!email || !password)) {
+      await writeWrapperCode(code.trim());
+      mainLog.info("wrote the 2FA code for the running wrapper login");
+      return { state: "starting", detail: "2FA code written" };
+    }
     if (typeof email !== "string" || typeof password !== "string" || !email || !password) {
       return { state: "error", detail: "Apple ID and password are required" };
     }
@@ -728,8 +756,11 @@ function loadAssets(): Assets {
 async function applyWrapperSession(ses: Electron.Session): Promise<boolean> {
   const state = readWrapperSession(wrapperBaseDir(getAudioWrapperCommand()));
   if (!state) return false;
-  const existing = await ses.cookies.get({ name: "media-user-token", domain: "music.apple.com" });
-  if (existing.some((cookie) => cookie.value === state.mediaUserToken)) return false;
+  // Only fill in a missing session. A player that signed in through Apple's own
+  // form already has one, and rewriting the cookie would reload the page for no
+  // reason — visible flicker on an otherwise finished sign-in.
+  const existing = await ses.cookies.get({ name: "media-user-token" });
+  if (existing.length > 0) return false;
   await ses.cookies.set({
     url: "https://music.apple.com/",
     name: "media-user-token",
@@ -959,9 +990,10 @@ const AUTH_CODE_PREFIX = "[lidra] auth-code:";
  * complete the wrapper's app-session login. Never logged, never persisted.
  */
 let pendingAuth: { email: string; password: string } | null = null;
+let pendingCode: string | null = null;
 let wrapperSignInStarted = false;
-/** Waits for a 2FA code before starting the wrapper's login run. */
-let wrapperCodeTimer: ReturnType<typeof setTimeout> | null = null;
+/** Watches for the player's session so the wrapper only logs in once it exists. */
+let wrapperSessionWatch: ReturnType<typeof setInterval> | null = null;
 
 async function forwardAuthToWrapper(email: string, password: string, code?: string): Promise<void> {
   if (!email || !password || wrapperSignInStarted || !wrapperService) return;
@@ -995,26 +1027,43 @@ function handleAuthCapture(isCreds: boolean, value: unknown): void {
   const payload = (value ?? {}) as { email?: string; password?: string; code?: string };
   if (isCreds) {
     pendingAuth = { email: String(payload.email ?? ""), password: String(payload.password ?? "") };
-    if (payload.code) {
-      void forwardAuthToWrapper(pendingAuth.email, pendingAuth.password, payload.code);
-    } else if (!wrapperCodeTimer) {
-      // Apple may ask for a code on the next screen; give it a moment so the
-      // wrapper's login does not have to be run twice.
-      wrapperCodeTimer = setTimeout(() => {
-        wrapperCodeTimer = null;
-        if (pendingAuth && !wrapperSignInStarted) {
-          void forwardAuthToWrapper(pendingAuth.email, pendingAuth.password);
-        }
-      }, 3_500);
-    }
+    if (payload.code) pendingCode = String(payload.code);
+    // Never start the wrapper from an unverified attempt: Apple sees every extra
+    // login as a separate device, and a run per mistyped password reads as abuse.
+    // The wrapper only logs in once the player actually has a session.
+    watchForPlayerSession();
     return;
   }
-  if (!pendingAuth || !payload.code || wrapperSignInStarted) return;
-  if (wrapperCodeTimer) {
-    clearTimeout(wrapperCodeTimer);
-    wrapperCodeTimer = null;
-  }
-  void forwardAuthToWrapper(pendingAuth.email, pendingAuth.password, payload.code);
+  if (!payload.code) return;
+  pendingCode = String(payload.code);
+  if (pendingAuth && !wrapperSignInStarted) void forwardIfSignedIn();
+}
+
+/** Poll the partition until the player is signed in, then hand the wrapper's login its turn. */
+function watchForPlayerSession(): void {
+  if (wrapperSessionWatch) return;
+  const ses = session.fromPartition("persist:lidra");
+  const startedAt = Date.now();
+  wrapperSessionWatch = setInterval(() => {
+    void (async () => {
+      if (Date.now() - startedAt > 180_000) {
+        if (wrapperSessionWatch) clearInterval(wrapperSessionWatch);
+        wrapperSessionWatch = null;
+        return;
+      }
+      await forwardIfSignedIn();
+    })();
+  }, 1_500);
+}
+
+async function forwardIfSignedIn(): Promise<void> {
+  if (!pendingAuth || wrapperSignInStarted) return;
+  const ses = session.fromPartition("persist:lidra");
+  const cookies = await ses.cookies.get({ name: "media-user-token" });
+  if (cookies.length === 0) return;
+  if (wrapperSessionWatch) clearInterval(wrapperSessionWatch);
+  wrapperSessionWatch = null;
+  await forwardAuthToWrapper(pendingAuth.email, pendingAuth.password, pendingCode ?? undefined);
 }
 
 function setupAuthFrameInjection(win: BrowserWindow, script: string): void {
