@@ -31,11 +31,7 @@ Lidra wraps `music.apple.com` directly: Apple owns the interface and keeps it cu
 
 ## Install
 
-Grab the latest release from [GitHub Releases](https://github.com/evangit2/lidra/releases) — `Lidra-*` AppImage, `.deb`, `.rpm`, `.flatpak`, `.snap`, `.dmg`, and the Windows installer — or:
-
-```bash
-snap install lidra
-```
+Grab the latest release from [GitHub Releases](https://github.com/evangit2/lidra/releases) — `Lidra-*` AppImage, `.deb`, `.rpm`, `.flatpak`, `.snap`, `.dmg`, and the Windows installer. No Snap Store release yet, so install the `.snap` file from there directly.
 
 Unsigned macOS/Windows builds need the usual Gatekeeper/SmartScreen workaround on first launch.
 
