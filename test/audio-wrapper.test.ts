@@ -143,7 +143,8 @@ describe("port pair selection", () => {
     });
     const status = await instance.start();
     expect(status.decryptor).toBe(`127.0.0.1:${port + 1}`);
-    expect(String(spawnImpl.mock.calls[0][0])).toContain(`-D ${port + 1}`);
+    const calls = (spawnImpl as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    expect(String(calls[0][0])).toContain(`-D ${port + 1}`);
     await new Promise<void>((resolve) => probe.close(() => resolve()));
   });
 });

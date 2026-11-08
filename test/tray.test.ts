@@ -59,6 +59,14 @@ vi.mock("../src/config", () => ({
 }));
 
 const mockTrayStrings: TrayStrings = {
+  audioRememberLogin: "Keep me signed in for lossless",
+  audioRememberLoginHint:
+    "Stores the Apple ID sign-in on this computer so lossless and Atmos start without asking again.",
+  wrapperEmail: "Apple ID",
+  wrapperPassword: "Password",
+  wrapperCode: "Two-factor code",
+  wrapperSignInAction: "Sign in to Apple (app session)",
+  signOutAction: "Sign out of Apple Music",
   settings: "Settings",
   integrations: "Integrations",
   settingsError: "Could not apply this setting.",
