@@ -114,7 +114,7 @@ declaration that every decryption or playback technique is legally permissible.
 | Platform | Artefacts |
 | --- | --- |
 | Linux | AppImage, deb, rpm, Flatpak, Snap — x64 and arm64 |
-| macOS | dmg — x64 and arm64 (Apple silicon), hardened runtime, no VMP signing |
+| macOS | dmg — x64 on `macos-15-intel`, arm64 on `macos-15`, hardened runtime, no VMP signing |
 | Windows | NSIS installer — x64 |
 
 Builds run in CI from `.github/workflows/builder.yml` on tag `*.*.*`, with the

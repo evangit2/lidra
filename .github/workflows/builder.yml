@@ -181,13 +181,15 @@ jobs:
             targets: "--linux AppImage deb rpm flatpak --arm64"
           # One arch per runner: the bundled ffmpeg is a host-architecture
           # binary, so building x64 on an arm64 runner would ship the wrong one.
+          # macos-13 is retired; the Intel images are macos-15-intel and
+          # macos-26-intel. An unknown label queues for ever instead of failing.
           - os: macos
             arch: x64
-            runner: macos-13
+            runner: macos-15-intel
             targets: "--mac dmg --x64"
           - os: macos
             arch: arm64
-            runner: macos-latest
+            runner: macos-15
             targets: "--mac dmg --arm64"
           - os: windows
             arch: amd64
