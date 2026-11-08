@@ -33,7 +33,7 @@ concurrency:
 jobs:
   version-gate:
     name: Version Gate 🔖
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     permissions:
       contents: read
@@ -58,7 +58,7 @@ jobs:
     # always() permits a skipped version-gate on non-tag runs but the result
     # check still blocks failures. Each dependent job needs its own condition.
     if: always() && (needs.version-gate.result == 'success' || needs.version-gate.result == 'skipped')
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
@@ -80,7 +80,7 @@ jobs:
     name: Lint Action ⚙️
     needs: [version-gate]
     if: always() && (needs.version-gate.result == 'success' || needs.version-gate.result == 'skipped')
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
@@ -95,7 +95,7 @@ jobs:
     name: Test Config 🧪
     needs: [version-gate]
     if: always() && (needs.version-gate.result == 'success' || needs.version-gate.result == 'skipped')
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
@@ -140,7 +140,7 @@ jobs:
     name: Sentinel 👁️
     needs: [lint-code, lint-actions, test-config, test-code, build]
     if: always()
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-latest
     permissions: {}
     steps:
       - name: Check results
