@@ -98,7 +98,7 @@ describe("showAboutWindow", () => {
         fullscreen: false,
         center: true,
         skipTaskbar: true,
-        backgroundColor: "#1a0a10",
+        backgroundColor: "#121F1D",
         show: false,
         webPreferences: expect.objectContaining({
           contextIsolation: true,

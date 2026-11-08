@@ -39,9 +39,9 @@ for name, x, y, width, height in screenshots:
 svg = f"""<svg xmlns="http://www.w3.org/2000/svg" width="3200" height="1800" viewBox="0 0 1600 900">
   <defs>
     <radialGradient id="backdrop" cx="48%" cy="45%" r="72%">
-      <stop offset="0" stop-color="#4a0b20"/>
-      <stop offset="0.65" stop-color="#380619"/>
-      <stop offset="1" stop-color="#270411"/>
+      <stop offset="0" stop-color="#1C2E2A"/>
+      <stop offset="0.65" stop-color="#14201E"/>
+      <stop offset="1" stop-color="#0D1413"/>
     </radialGradient>
     <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
       <feGaussianBlur stdDeviation="16"/>
