@@ -80,30 +80,32 @@ claimed — CI covers them at the unit/packaging level only.
 
 ### Legal
 
-Lidra is intended as an alternative music playback client for users with
-legitimate, active Apple Music subscriptions.
+Lidra is a playback client for people with legitimate, active Apple Music
+subscriptions. It grants no access on its own: every stream is resolved and
+keyed against the subscription **you** signed in with.
 
-The project is not intended to provide unauthorized access to subscription
-content, bypass payment requirements, distribute copyrighted audio, or facilitate
-music piracy.
+Be clear-eyed about what the pipeline does: it decrypts FairPlay-protected
+audio locally so it can play without Chromium's DRM stack. Whether that counts
+as lawful interoperability or prohibited circumvention where you live depends on
+your jurisdiction, Apple's agreements, and applicable law, including the Digital
+Millennium Copyright Act (DMCA) and any exemptions. This README is not legal
+advice, and the paragraph above is not a declaration that every technique here
+is legally permissible.
 
-A valid subscription establishes legitimate access to a service but does not
-necessarily authorize circumventing technological protection measures. Whether a
-particular implementation constitutes lawful access, interoperability, or
-prohibited DRM circumvention depends on its technical operation, Apple's
-applicable agreements, and relevant law, including the Digital Millennium
-Copyright Act (DMCA) and applicable exemptions.
+What Lidra does to stay narrow:
 
-The project prioritises authorized APIs, lawful interoperability, and playback
-mechanisms that do not unlawfully circumvent technological protection measures.
+- It ships no key-extraction tooling and bundles no device credentials. Every
+  key source — wrapper session, key service, CDM device blob — is one **you**
+  supply and are entitled to use.
+- Decrypted audio is played in real time and written only to the local playback
+  cache (to avoid re-decrypting replays). There is no export, download, or
+  sharing feature.
+- It is not intended to bypass payment, distribute copyrighted audio, or
+  facilitate piracy.
 
-Lidra bundles no key-extraction or DRM-circumvention tooling. Where it performs a
-licence exchange, it does so with a CDM device credential **you** supply, against
-the subscription **you** signed in with. Review any third-party key service or
-wrapper you connect for licensing, security and legal compliance before use.
-
-This disclaimer expresses the project's intended lawful use; it is not a
-declaration that every decryption or playback technique is legally permissible.
+Review any third-party key service or wrapper you connect for licensing,
+security and legal compliance before use. If you are unsure of your position,
+do not use the lossless/Dolby tiers.
 
 ## Features
 
