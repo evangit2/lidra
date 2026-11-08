@@ -80,11 +80,11 @@ with tempfile.TemporaryDirectory(prefix="app-icons-", dir=output) as temporary:
         directory + b"".join(images[size] for size in ico_sizes)
     )
     (staging / "icon.png").write_bytes(images[1024])
-    (staging / "lidra-logo.png").write_bytes(images[256])
+    (staging / "lidra-mark.png").write_bytes(images[256])
 
     for name in ("icon.png", "icon.icns", "icon.ico"):
         (staging / name).replace(output / name)
-    (staging / "lidra-logo.png").replace(root / "assets/lidra-logo.png")
+    (staging / "lidra-mark.png").replace(root / "assets/lidra-mark.png")
 
     # electron-builder packages every PNG in build/icons as a hicolor icon.
     # Remove unwanted sizes so stale files cannot remain in a later package.

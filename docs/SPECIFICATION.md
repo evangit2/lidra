@@ -171,7 +171,7 @@ lidra/
 │   │                                 background, the body layout and the icon rule. Both pages
 │   │                                 load it with a <link>, so both carry `style-src 'self'` in
 │   │                                 their CSP. Must be listed in `asarUnpack`
-│   ├── lidra-logo.png             - Product logo used in About window
+│   ├── lidra-mark.png             - Product logo used in About window
 │   ├── locales/
 │   │   ├── loading.json           - 1 translation record: LOADING_TEXT
 │   │   ├── tray.json              - 37 translation records: tray menu, dock, Windows taskbar

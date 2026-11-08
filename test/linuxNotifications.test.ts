@@ -125,7 +125,7 @@ describe("Linux track notifications", () => {
     expect(message.body.slice(0, 6)).toEqual([
       "Lidra",
       0,
-      getAssetPath("assets", "lidra-logo.png"),
+      getAssetPath("assets", "lidra-mark.png"),
       "Song",
       "Artist &amp; &lt;Album&gt;",
       [
@@ -161,7 +161,7 @@ describe("Linux track notifications", () => {
   it("keeps the application icon without an artwork hint when artwork is absent", async () => {
     await adapter.show({ ...track(), icon: undefined }, current);
     const [message] = notifyCalls();
-    expect(message.body[2]).toBe(getAssetPath("assets", "lidra-logo.png"));
+    expect(message.body[2]).toBe(getAssetPath("assets", "lidra-mark.png"));
     expect(message.body[6]).not.toHaveProperty("image-path");
     expect(message.body[6]["desktop-entry"].value).toBe("lidra");
     signal("ActionInvoked", [1, "next"]);
