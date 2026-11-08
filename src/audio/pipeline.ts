@@ -455,6 +455,14 @@ export class TrackPipeline {
             );
           }
         }
+        // A FairPlay key URI is useless to the key service: asking it for a
+        // Widevine licence on an skd:// URI earns a -1003 refusal that hides
+        // the real problem. Say what actually happened instead.
+        if (keyUri.startsWith("skd://")) {
+          throw new Error(
+            "lossless playback needs the wrapper's key session; sign in again from Settings → Audio",
+          );
+        }
         // A wrapper that is configured but not running (not signed in yet, or
         // stopped) must not take playback down with it: fall back to the key
         // source, which reaches the Widevine rendition.
