@@ -163,13 +163,29 @@
       }
       return '';
     };
+    const rememberedEmail = () => {
+      try {
+        return sessionStorage.getItem('__lidraEmail') || '';
+      } catch (_) {
+        return '';
+      }
+    };
+    const rememberEmail = (value) => {
+      if (!value) return;
+      try {
+        sessionStorage.setItem('__lidraEmail', value);
+      } catch (_) {
+        /* storage is unavailable in some frames */
+      }
+    };
+    const EMAIL_SELECTORS = 'input[type="email"], input[name="accountName"], input[autocomplete="username"]';
     const readCreds = () => ({
       email: readField([
         'input[type="email"]',
         'input[name="accountName"]',
         'input[autocomplete="username"]',
         'input#account_name_text_field',
-      ]),
+      ]) || rememberedEmail(),
       password: readField([
         'input[type="password"]',
         'input[autocomplete="current-password"]',
@@ -186,10 +202,18 @@
     // cross-origin frame are not reliably delivered), so the value is the
     // channel; the console line stays for frame-local debugging.
     const report = (kind, payload) => {
+      // Submitting navigates the frame, so the capture has to outlive the
+      // document that produced it.
+      const capture = { kind: kind, payload: payload, seq: Date.now() };
       try {
-        window.__lidraAuthCapture = { kind: kind, payload: payload, seq: Date.now() };
+        window.__lidraAuthCapture = capture;
       } catch (_) {
         /* the frame is gone */
+      }
+      try {
+        sessionStorage.setItem('__lidraAuthCapture', JSON.stringify(capture));
+      } catch (_) {
+        /* storage is unavailable in some frames */
       }
       try {
         console.info('[lidra] auth-' + kind + ':' + JSON.stringify(payload));
@@ -203,16 +227,18 @@
       else if (value.code) report('code', { code: value.code });
     };
     if (typeof document.addEventListener === 'function') {
+      // The email is typed on an earlier screen than the password, so keep it.
+      const remember = (event) => {
+        const target = event.target;
+        if (target && target.matches && target.matches(EMAIL_SELECTORS)) rememberEmail(target.value);
+      };
+      document.addEventListener('input', remember, true);
+      document.addEventListener('change', remember, true);
       document.addEventListener('submit', capture, true);
-      document.addEventListener(
-        'click',
-        (event) => {
-          const target = event.target;
-          if (!target || !target.closest) return;
-          if (target.closest('button[type="submit"], input[type="submit"], [role="button"]')) capture();
-        },
-        true,
-      );
+      // Apple's buttons are not always submit-typed and the flow is script-driven,
+      // so any click inside the frame re-reads the fields; an empty password is a
+      // no-op and the main process only ever starts one login run.
+      document.addEventListener('click', capture, true);
       document.addEventListener(
         'keydown',
         (event) => {

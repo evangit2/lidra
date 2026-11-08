@@ -1003,7 +1003,11 @@ function setupAuthFrameInjection(win: BrowserWindow, script: string): void {
       }
       if (!AUTH_FRAME_HOSTS.has(host)) continue;
       frame
-        .executeJavaScript("window.__lidraAuthCapture || null")
+        .executeJavaScript(
+          "window.__lidraAuthCapture || (() => {"
+          + " try { return JSON.parse(sessionStorage.getItem('__lidraAuthCapture') || 'null'); }"
+          + " catch (e) { return null; } })()",
+        )
         .then((captured: unknown) => {
           if (!captured || typeof captured !== "object") return;
           const { kind, payload, seq } = captured as { kind?: string; payload?: unknown; seq?: number };
