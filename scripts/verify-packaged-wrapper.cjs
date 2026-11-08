@@ -13,7 +13,7 @@ const WRAPPER = path.join("opt", "lidra", "wrapper");
 const DIST = path.join(__dirname, "..", "dist");
 
 function find(directory, depth = 0) {
-  if (depth > 6) return [];
+  if (depth > 10) return [];
   let entries = [];
   try {
     entries = fs.readdirSync(directory, { withFileTypes: true });

@@ -252,7 +252,10 @@ jobs:
       # vendor/wrapper and copied in by electron-builder.
       - name: Check the bundled lossless runtime is present
         shell: bash
-        run: test -x vendor/wrapper/opt/lidra/wrapper && du -sh vendor/wrapper
+        run: |
+          # Windows checkouts carry no execute bit, so only check it is there.
+          test -s vendor/wrapper/opt/lidra/wrapper
+          du -sh vendor/wrapper
       - name: Build distributables
         run: npx electron-builder --publish never ${{ matrix.targets }}
       # A package without the runtime cannot play lossless, and it is a 50 MB
