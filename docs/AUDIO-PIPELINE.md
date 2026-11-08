@@ -166,18 +166,25 @@ The request shape is verified against the live endpoint with a throwaway device:
 HTTP 200  {"status": -1003}      # device not authorised
 ```
 
-That is a licence-level answer, not a schema error — headers, challenge encoding,
-`uri` and `adamId` are all accepted. The remaining requirement is a CDM device
-Apple recognises.
+That is a licence-level answer, not a schema error — headers, challenge encoding
+and `adamId` are all accepted.
 
-This is not a limitation of Lidra's request. Running the reference downloader's
-own flow — its embedded L3 device, its `webPlayback` asset lookup, its
-`#EXT-X-KEY` KID, its `getPSSH` header, its JSON body — reproduces `{"status":
--1003}` exactly. The same answer comes back for a correct KID, a random KID and
-a deliberately corrupted challenge, so Apple refuses before it looks at the
-licence content at all: the device credential, not the request shape, is what is
-being rejected. Widevine device blobs are Google-signed per device, so this
-cannot be produced locally; it has to come from a provisioned CDM.
+**`-1003` is caused by the `uri` field, not by the device.** Apple keys the
+licence on the exact key URI the manifest declared. Sending a rebuilt CENC header
+(`data:;base64,<32 filler bytes + WidevineCencHeader>`) is refused even with a
+valid device; sending the manifest's own `data:;base64,<kid>` URI returns a
+licence. Verified with a real L3 device: the response decodes to a 16-byte
+content key, and ffmpeg decrypts the stream cleanly with it (and fails with
+`channel element not allocated` without it). The challenge still carries a CENC
+header built the way the reference client builds it (AESCTR + the same KID), so
+the CDM and the licence agree on the track.
+
+Quality ceiling of this path: Apple only advertises a Widevine key on the
+`28:ctrp256` web-playback flavour. Every rendition in the catalog's `enhancedHls`
+master — ALAC 24/192, ALAC 24/48, Atmos E-AC-3, and even AAC — declares
+`skd://` FairPlay only, and `webPlayback` serves its lossless flavours the same
+way. So the built-in Widevine route reaches AAC 256 kbps, not lossless; lossless
+and Atmos need the FairPlay path (see the wrapper sections below).
 
 ```
 PSSH ──► SignedMessage(LicenseRequest)  signed with the device RSA key

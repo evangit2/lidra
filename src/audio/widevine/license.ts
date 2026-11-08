@@ -18,6 +18,7 @@ import { aesCmac } from "./cmac";
 import { ProtoWriter, parseProto, firstBytes, firstVarint, allBytes } from "./protobuf";
 import {
   parseWidevinePssh,
+  decodeKeyUri,
   buildCencHeader,
   buildLicenseKeyUri,
   deriveKid,
@@ -214,24 +215,55 @@ export async function acquireContentKey(options: LicenseRequestOptions): Promise
     throw new LicenseError("sign in to Apple Music before requesting a licence");
   }
 
+  // Apple keys the licence on the `uri` the manifest itself declared. Rebuilding
+  // it from the KID is what makes the endpoint answer `{"status": -1003}`: with a
+  // reconstructed URI a VALID device is refused, while sending the manifest's
+  // literal `data:;base64,<kid>` URI returns a licence. So pass it through.
+  const declared = (keyUri ?? "").trim();
+  let uri = declared;
   let cencHeader: Buffer;
   let kid: Buffer | null = null;
-  if (keyUri && !keyUri.startsWith("skd://")) {
+
+  if (declared.startsWith("data:")) {
+    const payload = decodeKeyUri(declared);
+    if (payload.length === 16) {
+      // A bare KID: the reference's shape (AESCTR + key_id, empty content_id).
+      kid = payload;
+      cencHeader = buildCencHeader(kid);
+    } else {
+      let pssh;
+      try {
+        pssh = parseWidevinePssh(declared);
+      } catch (error) {
+        if (error instanceof PsshError) throw new LicenseError(error.message);
+        throw error;
+      }
+      cencHeader = pssh.data;
+      kid = psshKeyId(pssh) ?? deriveKid("lidra", adamId);
+    }
+  } else if (declared.startsWith("skd://")) {
+    // FairPlay-only rendition: no Widevine URI exists to pass through, so the
+    // header is synthesized and the licence is scoped to adamId.
+    kid = options.kid && options.kid.length === 16 ? options.kid : deriveKid("lidra", adamId);
+    cencHeader = buildCencHeader(kid);
+    uri = buildLicenseKeyUri(cencHeader);
+    licenseLog.info(`manifest declared FairPlay; requesting a Widevine licence for ${adamId}`);
+  } else if (declared) {
+    // Bare base64 pssh.
     let pssh;
     try {
-      pssh = parseWidevinePssh(keyUri);
+      pssh = parseWidevinePssh(`data:;base64,${declared}`);
     } catch (error) {
       if (error instanceof PsshError) throw new LicenseError(error.message);
       throw error;
     }
     cencHeader = pssh.data;
-    kid = psshKeyId(pssh);
+    kid = psshKeyId(pssh) ?? deriveKid("lidra", adamId);
+    uri = `data:;base64,${declared}`;
   } else {
-    // FairPlay-only manifest: synthesize the header the way Apple's Widevine
-    // clients do. The licence is scoped to adamId, so the KID is a placeholder.
     kid = options.kid && options.kid.length === 16 ? options.kid : deriveKid("lidra", adamId);
     cencHeader = buildCencHeader(kid);
-    licenseLog.info(`manifest declared FairPlay; requesting a Widevine licence for ${adamId}`);
+    uri = buildLicenseKeyUri(cencHeader);
   }
 
   const { signed, message } = buildLicenseRequest(device, cencHeader);
@@ -239,9 +271,7 @@ export async function acquireContentKey(options: LicenseRequestOptions): Promise
   const body = {
     challenge: signed.toString("base64"),
     "key-system": "com.widevine.alpha",
-    // Apple is sent the CENC header in the same shape its own clients use, with
-    // the KID the playlist declared.
-    uri: buildLicenseKeyUri(cencHeader),
+    uri,
     adamId,
     isLibrary: false,
     "user-initiated": true,

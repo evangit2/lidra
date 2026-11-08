@@ -307,6 +307,42 @@ describe("licence exchange", () => {
     expect(request.headers["x-apple-music-user-token"]).toBe("media-token");
   });
 
+  it("passes a bare-KID data URI through as the licence uri", async () => {
+    // Apple keys the licence on this exact string. Rebuilding it from the KID is
+    // what makes a good device answer -1003, so this must not regress.
+    const { device, publicKey } = makeDevice();
+    const kid = crypto.randomBytes(16);
+    const declaredUri = `data:;base64,${kid.toString("base64")}`;
+    let body: Record<string, unknown> | null = null;
+    const contentKey = crypto.randomBytes(16);
+    const fetchImpl = (async (_url: string, init: RequestInit) => {
+      body = JSON.parse(String(init.body)) as Record<string, unknown>;
+      const challenge = Buffer.from(String((body as Record<string, unknown>).challenge), "base64");
+      const requestMessage = firstBytes(parseProto(challenge), 2) as Buffer;
+      const response = buildLicenseResponse(
+        publicKey,
+        crypto.randomBytes(16),
+        requestMessage,
+        contentKey,
+        crypto.randomBytes(16),
+      );
+      return new Response(JSON.stringify({ license: response.toString("base64"), status: 0 }), {
+        status: 200,
+      });
+    }) as unknown as typeof fetch;
+
+    const key = await acquireContentKey({
+      device,
+      credentials: { developerToken: "d", mediaUserToken: "m" },
+      adamId: "268443097",
+      keyUri: declaredUri,
+      fetchImpl,
+    });
+
+    expect(key.equals(contentKey)).toBe(true);
+    expect((body as unknown as Record<string, unknown>).uri).toBe(declaredUri);
+  });
+
   it("surfaces licence refusals", async () => {
     const { device } = makeDevice();
     const fetchImpl = (async () =>
