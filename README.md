@@ -1,3 +1,7 @@
+> **Lidra** is a fork of [wimpysworld/sidra](https://github.com/wimpysworld/sidra) (Blue Oak 1.0.0, (c) Martin Wimpress). UI, theming, and sign-in flow are unchanged from upstream. Audio remains licensed in-app playback via the existing CastLabs/Widevine path — no DRM-stripping download pipeline is included.
+
+---
+
 <h1 align="center">
   <img src="build/icon.png" width="256" height="256" alt="Sidra">
   <br />

@@ -1,8 +1,8 @@
 {
-  "name": "sidra",
-  "productName": "Sidra",
+  "name": "lidra",
+  "productName": "Lidra",
   "version": "1.2.1",
-  "description": "An elegant Apple Music desktop client for Linux, macOS and Windows. No frippery, just quality. A better class of Cider 🍎",
+  "description": "Lidra \u2014 an elegant Apple Music desktop client for Linux, macOS and Windows, forked from wimpysworld/sidra.",
   "main": "dist/main.js",
   "scripts": {
     "prebuild": "node scripts/inject-lastfm-credentials.cjs",
@@ -42,8 +42,8 @@
     "copyright": "Copyright (c) Martin Wimpress",
     "publish": {
       "provider": "github",
-      "owner": "wimpysworld",
-      "repo": "sidra"
+      "owner": "evangit2",
+      "repo": "lidra"
     },
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "asar": true,
@@ -107,7 +107,7 @@
           },
           "Next": {
             "Name": "Next",
-            "Name[de]": "Nächstes",
+            "Name[de]": "N\u00e4chstes",
             "Exec": "dbus-send --print-reply --dest=org.mpris.MediaPlayer2.sidra /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.Next"
           },
           "Previous": {
