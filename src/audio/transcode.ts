@@ -57,7 +57,13 @@ export interface Transcoder {
  * preferred and PATH is only the last resort. Inside an asar archive the binary
  * lives in app.asar.unpacked, which is where it can actually be executed.
  */
+let bundledProbe: { value: string | null } | null = null;
+
 function bundledFfmpeg(): string | null {
+  // Settings rebuilds its state on every change, so probing the binary by
+  // executing it each time would spawn ffmpeg repeatedly. The bundled path cannot
+  // change while the app is running.
+  if (bundledProbe) return bundledProbe.value;
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const resolved = require("ffmpeg-static") as string | null;
@@ -76,8 +82,10 @@ function bundledFfmpeg(): string | null {
       );
       return null;
     }
+    bundledProbe = { value: executable };
     return executable;
   } catch {
+    bundledProbe = { value: null };
     return null;
   }
 }
