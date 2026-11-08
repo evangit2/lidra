@@ -84,17 +84,19 @@ const openDecryptService = async (): Promise<{
       buffer = Buffer.concat([buffer, chunk]);
       for (;;) {
         if (!armed) {
-          if (buffer.length < 4) return;
-          if (buffer.readUInt32LE(0) !== 0) throw new Error("expected a key-switch marker");
-          if (buffer.length < 5) return;
-          const idLength = buffer[4];
-          if (buffer.length < 5 + idLength + 1) return;
-          const adamId = buffer.subarray(5, 5 + idLength).toString();
-          const uriLength = buffer[5 + idLength];
-          if (buffer.length < 5 + idLength + 1 + uriLength) return;
-          const uri = buffer.subarray(6 + idLength, 6 + idLength + uriLength).toString();
-          events.push(`arm:${adamId}:${uri}`);
-          buffer = buffer.subarray(6 + idLength + uriLength);
+          // The first arm is two length-prefixed strings; a re-arm arrives behind a
+          // four-byte key-switch marker.
+          const marker = buffer.length >= 4 && buffer.readUInt32LE(0) === 0;
+          const offset = marker ? 4 : 0;
+          if (buffer.length < offset + 1) return;
+          const idLength = buffer[offset];
+          if (buffer.length < offset + 2 + idLength) return;
+          const adamId = buffer.subarray(offset + 1, offset + 1 + idLength).toString();
+          const uriLength = buffer[offset + 1 + idLength];
+          if (buffer.length < offset + 2 + idLength + uriLength) return;
+          const uri = buffer.subarray(offset + 2 + idLength, offset + 2 + idLength + uriLength).toString();
+          events.push(`${marker ? "switch:" : ""}arm:${adamId}:${uri}`);
+          buffer = buffer.subarray(offset + 2 + idLength + uriLength);
           armed = true;
           continue;
         }
