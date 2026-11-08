@@ -523,7 +523,8 @@ describe("main bootstrap", () => {
     expect(bootstrap.webContents.executeJavaScript).not.toHaveBeenCalled();
 
     await finish?.();
-    expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(4);
+    // shim, MusicKit hook, quality badge, fast queue and the navigation bar.
+    expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(5);
     for (const initialise of Object.values(bootstrap.integrations)) {
       expect(initialise.mock.invocationCallOrder[0]).toBeLessThan(
         bootstrap.webContents.executeJavaScript.mock.invocationCallOrder[0],
@@ -531,7 +532,7 @@ describe("main bootstrap", () => {
     }
 
     await navigate?.({}, "https://music.apple.com/gb/new");
-    expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(8);
+    expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(10);
     for (const initialise of Object.values(bootstrap.integrations))
       expect(initialise).toHaveBeenCalledOnce();
   });
@@ -559,6 +560,7 @@ describe("main bootstrap", () => {
     bootstrap.webContents.executeJavaScript
       .mockResolvedValueOnce(true)
       .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(true)
       .mockRejectedValueOnce(new Error("queue script failed"));
 
     await finish?.();
@@ -567,7 +569,7 @@ describe("main bootstrap", () => {
       "failed to inject fastQueueScript on load:",
       expect.any(Error),
     );
-    expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(4);
+    expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(5);
   });
 
   it("permits later SPA injection after initial integration and hook failures", async () => {
@@ -593,9 +595,11 @@ describe("main bootstrap", () => {
       expect.any(Error),
     );
     expect(bootstrap.integrations.trayState).toHaveBeenCalledOnce();
+    // The hook failure aborts the rest of that pass, so only the shim, the
+    // failed hook and the navigation bar ran.
     expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(3);
     await navigate?.({}, "https://music.apple.com/gb/new");
-    expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(7);
+    expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(8);
     expect(bootstrap.integrations.notifications).toHaveBeenCalledOnce();
   });
 

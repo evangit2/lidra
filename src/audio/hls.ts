@@ -36,8 +36,10 @@ export interface AudioVariant {
   bitDepth?: number;
   /** Bitrate in kbps for lossy renditions. */
   bitrateKbps?: number;
-  /** Channels attribute, when the manifest declares one. */
+  /** Channels attribute, when the manifest declares one, e.g. `16/JOC`. */
   channels?: string;
+  /** Dolby Atmos delivered as E-AC-3 + Joint Object Coding (`CHANNELS="16/JOC"`). */
+  joc?: boolean;
   /** Human readable label, e.g. `ALAC 24-bit/192 kHz`. */
   label: string;
 }
@@ -186,6 +188,7 @@ export function classifyVariant(
       tier: "atmos",
       bitrateKbps,
       channels,
+      joc: (channels ?? "").toUpperCase().includes("JOC"),
       label: `Dolby Atmos ${bitrateKbps} kbps`,
     };
   }

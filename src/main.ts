@@ -262,6 +262,7 @@ export interface Assets {
   fastQueueScript: string;
   drmShimScript: string;
   drmShimEnabled: boolean;
+  qualityBadgeScript: string;
 }
 
 function createSplash(): {
@@ -431,6 +432,23 @@ function initPlayerIPC(): Player {
  * Failures are logged, never fatal: if the pipeline cannot start, Lidra falls
  * back to the page's own playback attempt instead of refusing to launch.
  */
+/**
+ * Show the measured quality in the page. Failures are cosmetic and never affect
+ * playback, so they are logged at debug level only.
+ */
+function publishQuality(payload: {
+  label: string;
+  verdict: "ok" | "mismatch";
+  requested?: string;
+  mismatches?: string[];
+}): void {
+  if (!win || win.isDestroyed()) return;
+  const script = `window.__lidraQuality && window.__lidraQuality(${JSON.stringify(payload)})`;
+  win.webContents.executeJavaScript(script).catch((error: unknown) => {
+    mainLog.debug(`quality badge update skipped: ${String(error)}`);
+  });
+}
+
 function initAudioEngine(ses: Electron.Session): AudioEngine {
   const credentials = new CredentialStore(ses);
   // Prefer a Widevine licence (no external service) when a device blob is
@@ -469,8 +487,20 @@ function initAudioEngine(ses: Electron.Session): AudioEngine {
       mainLog.info(
         `audio ${snapshot.state} ${snapshot.asset.name}` +
           (snapshot.variant ? ` [${snapshot.variant.label}]` : "") +
+          (snapshot.check ? ` -> ${snapshot.check.label}` : "") +
           (snapshot.error ? `: ${snapshot.error}` : ""),
       );
+      if (snapshot.state === "streaming" && snapshot.check) {
+        publishQuality({
+          label:
+            snapshot.variant?.joc && snapshot.facts?.atmos
+              ? `${snapshot.check.label} · JOC`
+              : snapshot.check.label,
+          verdict: snapshot.check.ok ? "ok" : "mismatch",
+          requested: snapshot.variant?.tier,
+          mismatches: snapshot.check.mismatches,
+        });
+      }
     },
   });
 
@@ -540,6 +570,10 @@ function loadAssets(): Assets {
         .readFileSync(getAssetPath("assets", "lidraDrm.js"), "utf-8")
         .replace("__LIDRA_EME__", "true")
     : "";
+  const qualityBadgeScript = fs.readFileSync(
+    getAssetPath("assets", "qualityBadge.js"),
+    "utf-8",
+  );
   return {
     STYLE_FIX_CSS,
     authFrameScript,
@@ -548,6 +582,7 @@ function loadAssets(): Assets {
     fastQueueScript,
     drmShimScript,
     drmShimEnabled,
+    qualityBadgeScript,
   };
 }
 
@@ -687,6 +722,12 @@ async function injectRendererScripts(
         ),
       );
       mainLog.debug("MusicKit hook injected");
+      try {
+        await win.webContents.executeJavaScript(assets.qualityBadgeScript);
+        mainLog.debug("Quality badge injected");
+      } catch (e: unknown) {
+        mainLog.warn(`failed to inject qualityBadgeScript ${context}:`, e);
+      }
       try {
         await win.webContents.executeJavaScript(assets.fastQueueScript);
         mainLog.debug("Fast playlist queue injected");

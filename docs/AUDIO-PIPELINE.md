@@ -83,27 +83,55 @@ The pipeline is built around never waiting for a whole track:
    skips download, decryption and muxing entirely.
 5. Conversion only happens when the codec needs it. AAC costs no transcode.
 
-## Why the key type depends on the client
+## Which DRM system a stream uses
 
-Apple picks the DRM system from the client it believes it is talking to, not from
-the account. Same subscription, same `media-user-token`, different output:
+Apple's master playlist advertises **every** system it can serve for an asset, in
+`#EXT-X-SESSION-DATA:DATA-ID="com.apple.hls.AudioSessionKeyInfo"`. A live dump of a
+Dolby Atmos title shows all three side by side:
 
-| Client the manifest is issued to | `EXT-X-KEY` | Key comes from |
+```
+"com.microsoft.playready":            data:text/plain;base64,vgEAAA…
+"urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed"  (Widevine)
+                                      data:;base64,AAAOHA…  ← pssh box
+"com.apple.streamingkeydelivery":     skd://itunes.apple.com/p1419383922/c24
+```
+
+Which one ends up in the media playlist's `EXT-X-KEY` depends on the client the
+manifest is issued to:
+
+| Client | `EXT-X-KEY` in the media playlist | Key comes from |
 | --- | --- | --- |
-| Web player (Chrome/Electron session) | `data:` URI with a Widevine `pssh` | Widevine licence endpoint |
-| Android/Apple device wrapper | `skd://itunes.apple.com/…` | FairPlay key service |
+| Web session (this app, Chrome/Electron UA) | `data:` URI carrying a **Widevine** `pssh` | Widevine licence endpoint |
+| Native Apple client / FairPlay agent | `skd://itunes.apple.com/…` | FairPlay key service |
 
-Lidra's signed-in page is a web session, so the `enhancedHls` it resolves
-contains **Widevine** PSSH — verified against a live subscription, including with
-a Safari user agent. A FairPlay-only key service therefore cannot unlock that
-manifest, and a Widevine key cannot unlock an `skd://` manifest. Lidra accepts
-whichever the playlist declares and sends it to the matching key source.
+Lidra's signed-in page is a web session, so the `enhancedHls` it resolves carries
+a **Widevine** PSSH — verified against a live subscription, including with a
+Safari user agent. The reference downloader works the same way: it authenticates
+with a developer token plus `media-user-token` against
+`play.music.apple.com/…/webPlayback` using a Chrome UA, builds a Widevine CENC
+header from the track's KID, and posts to
+`play.itunes.apple.com/…/acquireWebPlaybackLicense`. There is no FairPlay in its
+audio path; `skd://` appears only in its older video/wrapper path.
 
 ## Key sources
 
 Lidra contains no key extraction and bundles no CDM. It either performs the
 Widevine licence exchange with a device you supply, or asks a service you run for
 keys (or for decryption itself). All of it is configured, never bundled.
+
+### Verified quality
+
+Every pipeline inspects the clear initialisation segment before decrypting
+anything and records what the stream really is (codec, bit depth, sample rate,
+channels, bitrate, Atmos bed). That measurement drives the in-app badge and the
+mismatch warning; see [QUALITY.md](QUALITY.md).
+
+### ffmpeg
+
+ALAC and E-AC-3 cannot be decoded by Chromium, so lossless and Dolby playback go
+through ffmpeg. The release builds bundle a platform binary (`ffmpeg-static`,
+unpacked out of the asar) rather than depending on the machine having one:
+`LIDRA_FFMPEG` > bundled binary > `PATH`.
 
 ### Widevine licence (built in, `LIDRA_WIDEVINE_DEVICE`)
 

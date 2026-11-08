@@ -48,9 +48,33 @@ export interface Transcoder {
   readonly exited: Promise<number | null>;
 }
 
-/** Locate ffmpeg, preferring an explicit path, then the environment, then PATH. */
+/**
+ * ffmpeg that ships with the app.
+ *
+ * Chromium cannot decode ALAC or E-AC-3, so lossless and Dolby playback depend
+ * on ffmpeg being present. Relying on the user's PATH would make those tiers
+ * work on some machines and silently fail on others, so a build-time binary is
+ * preferred and PATH is only the last resort. Inside an asar archive the binary
+ * lives in app.asar.unpacked, which is where it can actually be executed.
+ */
+function bundledFfmpeg(): string | null {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const resolved = require("ffmpeg-static") as string | null;
+    if (!resolved) return null;
+    const executable = resolved.includes("app.asar")
+      ? resolved.replace("app.asar", "app.asar.unpacked")
+      : resolved;
+    fs.accessSync(executable, fs.constants.X_OK);
+    return executable;
+  } catch {
+    return null;
+  }
+}
+
+/** Locate ffmpeg: explicit path, environment, bundled binary, then PATH. */
 export function findFfmpeg(explicit?: string): string | null {
-  const candidates = [explicit, process.env.LIDRA_FFMPEG, "ffmpeg"].filter(
+  const candidates = [explicit, process.env.LIDRA_FFMPEG, bundledFfmpeg(), "ffmpeg"].filter(
     (value): value is string => typeof value === "string" && value.length > 0,
   );
   for (const candidate of candidates) {

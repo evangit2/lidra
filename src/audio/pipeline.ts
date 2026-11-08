@@ -29,6 +29,7 @@ import {
 import type { KeyCache } from "./keys";
 import { rewriteInit } from "./mp4/init";
 import { decryptSegment } from "./mp4/segment";
+import { inspectInitSegment, verifyAgainstVariant, type QualityCheck, type StreamFacts } from "./quality";
 import { createTranscoder, type Transcoder, type AudioTransform } from "./transcode";
 import { LegacyDecryptor, fetchDeviceManifest } from "./legacy/decryptor";
 import { decryptSegmentLegacy } from "./legacy/segment";
@@ -64,6 +65,10 @@ export interface PipelineSnapshot {
   error?: string;
   bytesIn: number;
   startedAt: number;
+  /** Codec configuration read out of the initialisation segment. */
+  facts?: StreamFacts | null;
+  /** Whether what arrived matches what the manifest promised. */
+  check?: QualityCheck | null;
 }
 
 export interface PreparedTrack {
@@ -112,6 +117,8 @@ export class TrackPipeline {
   readonly directory: string;
 
   private state: PipelineState = "preparing";
+  private facts: StreamFacts | null = null;
+  private check: QualityCheck | null = null;
   private failure: string | undefined;
   private variant: AudioVariant | null = null;
   private bytesIn = 0;
@@ -138,6 +145,8 @@ export class TrackPipeline {
       error: this.failure,
       bytesIn: this.bytesIn,
       startedAt: this.startedAt,
+      facts: this.facts,
+      check: this.check,
     };
   }
 
@@ -233,6 +242,27 @@ export class TrackPipeline {
         signal: this.abort.signal,
       });
       const encryptedInit = Buffer.from(await initResponse.arrayBuffer());
+
+      // The init segment is in the clear, so the delivered quality can be proven
+      // before a single sample is decrypted.
+      try {
+        this.facts = inspectInitSegment(encryptedInit);
+        this.check = verifyAgainstVariant(variant, this.facts);
+        if (this.check.ok) {
+          pipelineLog.info(`verified ${this.check.label} for ${this.asset.name}`);
+        } else {
+          pipelineLog.warn(
+            `quality mismatch for ${this.asset.name}: ${this.check.mismatches.join("; ")}`,
+          );
+        }
+      } catch (error) {
+        pipelineLog.warn(
+          `could not inspect the init segment for ${this.asset.name}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+
       const { init: plainInit, info } = rewriteInit(encryptedInit);
       await transcoder.write(plainInit);
 

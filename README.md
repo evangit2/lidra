@@ -26,12 +26,24 @@ Lidra keeps Sidra's interface, sign-in, theming and integrations, and replaces t
 - **The page still owns playback.** Because Lidra answers the manifest request with its own playlist, the media element, transport, queue, scrubbing and player bar stay exactly as upstream — seeking included.
 - **Decryption runs in the app**, driven by a key source you supply: a key service (socket or HTTP) or the wrapper decrypt socket described in [docs/AUDIO-PIPELINE.md](docs/AUDIO-PIPELINE.md).
 
+Every track is verified after it resolves: the initialisation segment is in the
+clear and states the real bit depth, sample rate, channel count and bitrate, so
+Lidra checks the delivered stream against the tier it asked for and shows the
+result in a badge (`ALAC 24-bit/192 kHz stereo`, `Dolby Digital Plus (Atmos) 48 kHz
+6 channels 768 kbps`) instead of trusting the manifest. Live measurements and how
+to reproduce them: [docs/QUALITY.md](docs/QUALITY.md) — 22 of 22 renditions across
+hi-res, lossless, Atmos and AAC matched their claim.
+
 | Source | Delivered as | Needs ffmpeg |
 | --- | --- | --- |
 | AAC-LC / HE-AAC | stream copy (fMP4) | no |
 | ALAC lossless / hi-res | FLAC in fragmented MP4 (bit-exact) | yes |
 | Dolby Atmos (E-AC-3) | FLAC, 5.1 preserved | yes |
 | Dolby Audio (AC-3) | FLAC, 5.1 preserved | yes |
+
+`ffmpeg-static` is bundled for Linux, macOS and Windows and unpacked next to the
+app, so lossless and Dolby playback work on a machine with no ffmpeg installed.
+`LIDRA_FFMPEG` still overrides it, and `PATH` is the last resort.
 
 Configuration lives in the Audio section of Settings or the environment:
 
@@ -47,13 +59,41 @@ Configuration lives in the Audio section of Settings or the environment:
 | `LIDRA_FFMPEG` | explicit ffmpeg path |
 | `LIDRA_WIDEVINE_DEVICE` | `.wvd` file (or directory with `client_id.bin` + `private_key.pem`) for the built-in Widevine licence exchange |
 
+Verify the pipeline against a live account (uses the signed-in session, prints
+nothing sensitive):
+
+```bash
+npm run build
+LIDRA_REPORT_MAX=10 npx electron test/e2e/quality-report.cjs "miles davis"
+npm run test:multichannel   # 5.1 Atmos-shaped source through MSE, decoded by Chromium
+```
+
 ### Legal
 
-Lidra is an alternative playback client for people with a legitimate, active Apple Music subscription. It is not intended to provide unauthorised access to subscription content, bypass payment, distribute copyrighted audio, or facilitate piracy.
+Lidra is intended as an alternative music playback client for users with
+legitimate, active Apple Music subscriptions.
 
-A valid subscription establishes legitimate access to a service; it does not by itself authorise circumventing technological protection measures. Whether a particular implementation is lawful access, interoperability or prohibited circumvention depends on how it operates, on Apple's agreements, and on applicable law, including the DMCA and its exemptions.
+The project is not intended to provide unauthorized access to subscription
+content, bypass payment requirements, distribute copyrighted audio, or facilitate
+music piracy.
 
-Lidra bundles no key-extraction or DRM-circumvention tooling. It implements authorised APIs, local decryption of streams you are entitled to play, and playback paths you configure yourself. Review any third-party key service or wrapper you connect for licensing, security and legal compliance before using it. This notice states intended use; it is not a legal opinion or a declaration that every technique is permissible.
+A valid subscription establishes legitimate access to a service but does not
+necessarily authorize circumventing technological protection measures. Whether a
+particular implementation constitutes lawful access, interoperability, or
+prohibited DRM circumvention depends on its technical operation, Apple's
+applicable agreements, and relevant law, including the Digital Millennium
+Copyright Act (DMCA) and applicable exemptions.
+
+The project prioritises authorized APIs, lawful interoperability, and playback
+mechanisms that do not unlawfully circumvent technological protection measures.
+
+Lidra bundles no key-extraction or DRM-circumvention tooling. Where it performs a
+licence exchange, it does so with a CDM device credential **you** supply, against
+the subscription **you** signed in with. Review any third-party key service or
+wrapper you connect for licensing, security and legal compliance before use.
+
+This disclaimer expresses the project's intended lawful use; it is not a
+declaration that every decryption or playback technique is legally permissible.
 
 ## Features
 
