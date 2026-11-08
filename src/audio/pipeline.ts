@@ -77,6 +77,12 @@ export interface PipelineOptions {
    * rendition is FairPlay-only, which every lossless and Atmos rendition is.
    */
   webPlayback?: (adamId: string) => Promise<{ text: string; baseUrl: string } | null>;
+  /**
+   * Called on every state change. The first decrypted fragment marks the track
+   * as streaming, which is the moment the delivered quality becomes a fact the
+   * UI can show; without this the badge only ever learned about failures.
+   */
+  onChange?: () => void;
 }
 
 export interface PipelineSnapshot {
@@ -341,6 +347,11 @@ export class TrackPipeline {
     if (error) {
       this.failure = error;
       pipelineLog.error(`${this.asset.name}: ${error}`);
+    }
+    try {
+      this.options.onChange?.();
+    } catch (notifyError) {
+      pipelineLog.warn(`state listener failed: ${String(notifyError)}`);
     }
   }
 

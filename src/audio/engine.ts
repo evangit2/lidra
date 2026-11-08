@@ -178,8 +178,9 @@ export class AudioEngine {
       const asset = await this.asset(appleId, storefront, credentials);
       const preference = this.options.getPreference();
 
-      const pipeline = new TrackPipeline({
+      const pipeline: TrackPipeline = new TrackPipeline({
         asset,
+        onChange: () => this.emit(pipeline),
         preference,
         keyCache: this.options.keyCache,
         cacheRoot: this.options.cacheRoot,

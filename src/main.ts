@@ -508,6 +508,16 @@ function expandWrapperCommand(command: string): string {
 
 function initAudioEngine(ses: Electron.Session): AudioEngine {
   const credentials = new CredentialStore(ses);
+  // Header capture only sees requests the page has already sent, and the web
+  // player keeps its token in memory, so ask the page when nothing arrived yet.
+  credentials.setPageTokenSource(async () => {
+    if (!win || win.isDestroyed()) return null;
+    return win.webContents.executeJavaScript(
+      "(window.MusicKit && window.MusicKit.getInstance && " +
+        "window.MusicKit.getInstance().developerToken) || null",
+      true,
+    );
+  });
   // Prefer a Widevine licence (no external service) when a device blob is
   // configured; otherwise fall back to a key service or wrapper socket.
   const widevine = createWidevineProvider(getAudioWidevineDevice() ?? undefined, () => {
@@ -586,7 +596,9 @@ function initAudioEngine(ses: Electron.Session): AudioEngine {
       if (snapshot.state === "error" && snapshot.error) {
         publishQuality({ label: snapshot.error, verdict: "mismatch", requested: snapshot.variant?.tier });
       }
-      if (snapshot.state === "streaming" && snapshot.check) {
+      // A cached track never re-enters "streaming"; its measured facts are just
+      // as true, so publish on both transitions.
+      if ((snapshot.state === "streaming" || snapshot.state === "complete") && snapshot.check) {
         const facts = snapshot.facts;
         const wrapped = wrapperService?.status().state === "running";
         publishQuality({
