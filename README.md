@@ -1,5 +1,5 @@
 <h1 align="center">
-  <img src="build/icon.png" width="128" height="128" alt="Lidra">
+  <img src="assets/lidra-logo.png" width="128" height="128" alt="Lidra">
   <br />
   Lidra
 </h1>
@@ -13,7 +13,7 @@ Lidra wraps `music.apple.com` directly: Apple owns the interface and keeps it cu
 > **Fork note:** Lidra is a fork of [wimpysworld/sidra](https://github.com/wimpysworld/sidra) (Blue Oak 1.0.0, © Martin Wimpress). UI, theming, sign-in flow and release infrastructure are unchanged from upstream. The playback stack is replaced: Lidra serves Apple Music's lossless, hi-res and Dolby renditions through its own audio pipeline instead of Chromium's DRM path. See [Audio pipeline](#audio-pipeline) and [docs/AUDIO-PIPELINE.md](docs/AUDIO-PIPELINE.md).
 
 <p align="center">
-  <a href="assets/lidra-screenshot.png"><img src="assets/lidra-screenshot.png" alt="Lidra playing music with Settings open" width="100%"></a>
+  <a href="assets/lidra-screenshot.png?v=2"><img src="assets/lidra-screenshot.png?v=2" alt="Lidra playing music with Settings open" width="100%"></a>
 </p>
 
 ## Audio pipeline
