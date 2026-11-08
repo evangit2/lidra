@@ -63,6 +63,7 @@ Electron build shipped here). So:
 | `mp4a.40.2` / `mp4a.40.5` | fMP4 → fMP4, stream copy | unchanged |
 | `alac` | fMP4 → fMP4 with FLAC | lossless, bit-exact |
 | `ec-3` / `ac-3` | fMP4 → fMP4 with FLAC | lossless after decode; 5.1 preserved |
+| binaural spatial render (separate `mp4a` rendition) | fMP4 → fMP4, stream copy | unchanged stereo; only selected when quality is `atmos` and spatial is `binaural` |
 
 Dolby Atmos object metadata is not reconstructed — the E-AC-3 core is decoded and
 its channels are passed through. Spatial rendering then depends on the OS and
@@ -74,9 +75,13 @@ The pipeline is built around never waiting for a whole track:
 
 1. Resolution starts on `nowPlayingItemDidChange`, before the player asks for a
    manifest, so the catalog round trip overlaps the click.
-2. The player's manifest request is **held** (not failed, not served empty) until
-   the first muxed segment exists, typically a few hundred milliseconds.
-3. ffmpeg writes HLS segments of 2 seconds as fragments arrive, so audio starts
+2. The player's manifest request is **held** via the bridge (`waitForCurrent`,
+   up to ~20 s) until the pipeline is ready — i.e. the first fragment is
+   decrypted and muxed — not failed or served empty. Before the playlist file
+   exists the loopback server answers 503 with `Retry-After: 1`, so the player
+   retries instead of erroring. Expect a few seconds (network + first decrypt),
+   typically a few hundred milliseconds of hold after resolution.
+3. ffmpeg writes HLS segments of 2 seconds (`HLS_SEGMENT_SECONDS`) as fragments arrive, so audio starts
    after roughly one segment of decode instead of after the whole download. A
    hi-res track is 100 MB+; that difference is the whole point.
 4. Completed tracks are cached under `userData/audio-cache/<id>/`; replaying one
@@ -96,28 +101,36 @@ Dolby Atmos title shows all three side by side:
 "com.apple.streamingkeydelivery":     skd://itunes.apple.com/p1419383922/c24
 ```
 
-Which one ends up in the media playlist's `EXT-X-KEY` depends on the client the
-manifest is issued to:
+Which one ends up in the media playlist's `EXT-X-KEY` depends on which master the
+rendition came from:
 
-| Client | `EXT-X-KEY` in the media playlist | Key comes from |
+| Master | `EXT-X-KEY` in the media playlist | Key comes from |
 | --- | --- | --- |
-| Web session (this app, Chrome/Electron UA) | `data:` URI carrying a **Widevine** `pssh` | Widevine licence endpoint |
-| Native Apple client / FairPlay agent | `skd://itunes.apple.com/…` | FairPlay key service |
+| Catalog `enhancedHls` (all lossless/Atmos/AAC renditions) | `skd://itunes.apple.com/…` (FairPlay) | wrapper decrypt socket or key service |
+| `webPlayback` fallback asset (`28:ctrp256`, AAC 256) | `data:` URI carrying a **Widevine** `pssh` | Widevine licence exchange (`LIDRA_WIDEVINE_DEVICE`) |
 
-Lidra's signed-in page is a web session, so the `enhancedHls` it resolves carries
-a **Widevine** PSSH — verified against a live subscription, including with a
-Safari user agent. The reference downloader works the same way: it authenticates
-with a developer token plus `media-user-token` against
-`play.music.apple.com/…/webPlayback` using a Chrome UA, builds a Widevine CENC
-header from the track's KID, and posts to
-`play.itunes.apple.com/…/acquireWebPlaybackLicense`. There is no FairPlay in its
-audio path; `skd://` appears only in its older video/wrapper path.
+Lidra's signed-in page is a web session, and every lossless and Atmos rendition in
+the catalog's `enhancedHls` master declares FairPlay (`skd://itunes.apple.com/…`)
+— even to a web session, including with a Safari user agent. No CDM key exchange
+opens those renditions; the reference downloader works the same way. A Widevine
+`data:` PSSH appears only on the older `webPlayback` fallback asset (flavour
+`28:ctrp256`, AAC 256), which is the honest ceiling of the Widevine path. `skd://`
+in older wrapper/video paths is unrelated to this audio pipeline.
 
 ## Key sources
 
 Lidra contains no key extraction and bundles no CDM. It either performs the
 Widevine licence exchange with a device you supply, or asks a service you run for
-keys (or for decryption itself). All of it is configured, never bundled.
+keys (or for decryption itself). Priority in `src/main.ts`: wrapper decrypt
+socket when `LIDRA_DECRYPTOR` is set (mode `wrapper`), otherwise the key cache
+backed by the Widevine device when `LIDRA_WIDEVINE_DEVICE` is set, otherwise the
+configured key service, otherwise an unconfigured provider that fails loudly.
+All of it is configured, never bundled.
+
+Ceilings: the wrapper and key-service paths open every tier (lossless/Atmos
+verified end-to-end on Linux via the wrapper); the Widevine-device path alone
+opens only the AAC 256 kbps `webPlayback` fallback, because every
+`enhancedHls` lossless/Atmos rendition is FairPlay-only.
 
 ### Object audio and spatial presentation
 
@@ -310,6 +323,19 @@ Covered by automated tests in this repository:
 - Real end-to-end decode: ALAC 24-bit/96 kHz → decrypt/mux path → HLS/FLAC →
   Chromium `MediaSource` plays and advances
   (`test/e2e/audio-playback.cjs`).
+- Init-level quality across 22 renditions (1 hi-res, 11 lossless, 10 Atmos,
+  2 AAC) plus Atmos frame integrity (1,404 frames at 768 kbps, 448 kbps tier)
+  — see [QUALITY.md](QUALITY.md).
+
+Confirmed tiers (what actually plays, and where):
+
+| Tier | Linux | macOS | Windows |
+| --- | --- | --- | --- |
+| AAC 256 (stream copy) | yes, wrapper + key + Widevine paths | same code, not live-run here | same code, not live-run here |
+| ALAC lossless / hi-res (FLAC repack) | yes, wrapper path decrypt-to-audible | same code + bundled ffmpeg, not live-run here | same code + bundled ffmpeg, not live-run here |
+| Atmos bed 5.1 FLAC | yes, wrapper path (768 + 448 kbps frame-checked) | same code + bundled ffmpeg, not live-run here | same code + bundled ffmpeg, not live-run here |
+| Binaural AAC stereo | selected only for quality `atmos` + spatial `binaural`; stream copy, no ffmpeg | same logic, not live-run here | same logic, not live-run here |
+| Dolby Audio AC-3 | code path identical to Atmos; no live AC-3 master measured | — | — |
 
 Not verifiable in CI, and therefore not claimed: the exact shape of a
 subscriber's `enhancedHls` for every storefront, and any key service you connect.
@@ -320,7 +346,14 @@ copying credentials.
 
 - Chromium resamples to the output device's rate; the pipeline is lossless up to
   Chromium, not bit-perfect to the DAC.
-- Radio, previews and music videos keep the page's own playback path and
-  therefore still need a CDM. Lidra deliberately does not touch them.
-- Library-only items without a catalog id cannot be resolved through the API.
-- `ffmpeg` is required for lossless and Dolby renditions; AAC plays without it.
+- Radio, previews, music videos and library-only items without a catalog id keep
+  the page's own playback path (the bridge only redirects catalog-id manifests)
+  and therefore still need a CDM. Lidra deliberately does not touch them.
+- Without a wrapper or key service, lossless/Atmos fall back to the AAC 256 kbps
+  web-playback asset when a Widevine device is configured, and fail with a named
+  error otherwise.
+- `ffmpeg` is required for lossless and Dolby renditions; AAC (including the
+  binaural render) plays without it. Resolution order: `LIDRA_FFMPEG` > bundled
+  binary > `PATH`.
+- Object metadata (heights, head-tracking) is not reproduced in either spatial
+  mode; `bed` keeps the 5.1 core, `binaural` plays Apple's stereo render.
