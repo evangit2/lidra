@@ -31,6 +31,11 @@ export class LegacyDecryptorError extends Error {
 export interface LegacyRequest {
   adamId: string;
   keyUri: string;
+  /** cbcs block pattern from `tenc`: decrypt N blocks, skip M. 0/0 = whole span. */
+  cryptByteBlock?: number;
+  skipByteBlock?: number;
+  /** 0 when the track uses a constant IV, so senc carries none. */
+  perSampleIvSize?: number;
 }
 
 /** Serialises requests onto one connection: the service is stateful. */

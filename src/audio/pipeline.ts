@@ -139,6 +139,24 @@ function isComplete(directory: string): boolean {
   }
 }
 
+
+/** The init-segment reader returns either the whole info object or just the map. */
+function encryptionOf(info: unknown): {
+  cryptByteBlock?: number;
+  skipByteBlock?: number;
+  perSampleIvSize?: number;
+} {
+  const value = info as {
+    encryption?: { cryptByteBlock?: number; skipByteBlock?: number; perSampleIvSize?: number };
+  };
+  if (value?.encryption) return value.encryption;
+  return (info ?? {}) as {
+    cryptByteBlock?: number;
+    skipByteBlock?: number;
+    perSampleIvSize?: number;
+  };
+}
+
 export class TrackPipeline {
   readonly asset: SongAsset;
   readonly preference: QualityTier | null;
@@ -393,11 +411,17 @@ export class TrackPipeline {
         return await decryptSegmentLegacy(segment, decryptor, {
           adamId: this.asset.id,
           keyUri,
+          cryptByteBlock: encryptionOf(info).cryptByteBlock,
+          skipByteBlock: encryptionOf(info).skipByteBlock,
+          perSampleIvSize: encryptionOf(info).perSampleIvSize,
         });
       } catch (error) {
         // A wrapper that is configured but not running (not signed in yet, or
         // stopped) must not take playback down with it: fall back to the key
         // source, which reaches the Widevine rendition.
+        pipelineLog.warn(
+          `wrapper decrypt failed (${error instanceof Error ? error.message : String(error)}); trying the key source`,
+        );
         const key = await this.resolveKey(keyUri);
         if (!key) throw error;
         pipelineLog.warn(

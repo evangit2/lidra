@@ -50,6 +50,8 @@ export interface FragmentSample {
   offset: number;
   size: number;
   iv?: Buffer;
+  /** cbcs subsample map: clear bytes then protected bytes, per entry. */
+  subsamples?: { clear: number; protected: number }[];
 }
 
 export interface SampleLayout {
@@ -69,7 +71,7 @@ function readFullBoxFlags(buffer: Buffer, payload: number): number {
  * Supports the layout Apple Music uses (`default-base-is-moof` with a `trun`
  * data offset) and the explicit `base-data-offset` variant.
  */
-export function sampleLayout(segment: Buffer): SampleLayout {
+export function sampleLayout(segment: Buffer, perSampleIvSize = 8): SampleLayout {
   const top = readBoxes(segment, 0, segment.length);
   const samples: FragmentSample[] = [];
   let trackId = 0;
@@ -131,21 +133,32 @@ export function sampleLayout(segment: Buffer): SampleLayout {
         if (trunFlags & 0x000800) trunCursor += 4;
 
         let iv: Buffer | undefined;
+        let subsamples: { clear: number; protected: number }[] | undefined;
         if (senc) {
-          let ivLength = 8;
+          // ISO/IEC 23001-7: each senc entry is IV first, then the subsample table.
+          // Reading them the other way shifts every entry and turns the table into
+          // noise.
+          if (perSampleIvSize > 0) {
+            iv = Buffer.from(segment.subarray(sencCursor, sencCursor + perSampleIvSize));
+            sencCursor += perSampleIvSize;
+          }
           if (sencFlags & 0x000002) {
             const subsampleCount = segment.readUInt16BE(sencCursor);
-            sencCursor += 2 + subsampleCount * 6;
+            sencCursor += 2;
             if (subsampleCount > 0) {
-              throw new Error("legacy decryptor does not support subsample encryption");
+              subsamples = [];
+              for (let entry = 0; entry < subsampleCount; entry += 1) {
+                const clear = segment.readUInt16BE(sencCursor);
+                const protectedBytes = segment.readUInt32BE(sencCursor + 2);
+                sencCursor += 6;
+                subsamples.push({ clear, protected: protectedBytes });
+              }
             }
           }
-          iv = Buffer.from(segment.subarray(sencCursor, sencCursor + ivLength));
-          sencCursor += ivLength;
         }
 
         if (size <= 0) throw new Error("trun declared a zero-sized sample");
-        samples.push({ offset, size, iv });
+        samples.push({ offset, size, iv, subsamples });
         offset += size;
       }
     }
@@ -163,23 +176,68 @@ export async function decryptSegmentLegacy(
   decryptor: LegacyDecryptor,
   request: LegacyRequest,
 ): Promise<Buffer> {
-  const layout = sampleLayout(segment);
+  const layout = sampleLayout(segment, request.perSampleIvSize ?? 8);
   if (layout.samples.length === 0) {
     throw new Error("no samples found in fragment");
   }
   const output = Buffer.from(segment);
+  const cryptBlocks = request.cryptByteBlock ?? 0;
+  const skipBlocks = request.skipByteBlock ?? 0;
+
+  /**
+   * Decrypt one protected span. cbcs encrypts `crypt` blocks then skips `skip`
+   * blocks; the wrapper only sees ciphertext, so the decrypt blocks are gathered
+   * into one run and scattered back afterwards.
+   */
+  const decryptSpan = async (span: Buffer): Promise<Buffer> => {
+    if (cryptBlocks === 0 || skipBlocks === 0) {
+      return decryptor.decrypt(span, request);
+    }
+    const cryptBytes = cryptBlocks * 16;
+    const stride = cryptBytes + skipBlocks * 16;
+    const chunks: Buffer[] = [];
+    for (let pos = 0; pos + cryptBytes <= span.length; pos += stride) {
+      chunks.push(span.subarray(pos, pos + cryptBytes));
+    }
+    if (chunks.length === 0) return span;
+    const gathered = Buffer.concat(chunks);
+    const plainGathered = await decryptor.decrypt(gathered, request);
+    const result = Buffer.from(span);
+    let read = 0;
+    for (let pos = 0; pos + cryptBytes <= span.length; pos += stride) {
+      plainGathered.copy(result, pos, read, read + cryptBytes);
+      read += cryptBytes;
+    }
+    return result;
+  };
+
   for (const sample of layout.samples) {
     if (sample.offset + sample.size > output.length) {
       throw new Error("sample table points outside the fragment");
     }
     const ciphertext = Buffer.from(segment.subarray(sample.offset, sample.offset + sample.size));
     if (sample.iv && sample.iv.length > 0) {
-      // The wrapper service decrypts with the key it armed; CBC needs the
-      // sample IV to be part of the data only for cenc-style streams, which
-      // Apple Music audio does not use. Reject rather than produce noise.
+      // The wrapper decrypts with the key it armed and carries the constant IV
+      // for the track; per-sample IVs would have to travel on the wire, which
+      // this transport does not do.
       throw new Error("per-sample IV streams are not supported by the legacy transport");
     }
-    const plain = await decryptor.decrypt(ciphertext, request);
+    if (sample.subsamples && sample.subsamples.length > 0) {
+      let cursor = 0;
+      for (const entry of sample.subsamples) {
+        cursor += entry.clear;
+        if (entry.protected === 0) continue;
+        const span = ciphertext.subarray(cursor, cursor + entry.protected);
+        if (span.length !== entry.protected) {
+          throw new Error("subsample exceeds the sample buffer");
+        }
+        const plainSpan = await decryptSpan(Buffer.from(span));
+        plainSpan.copy(output, sample.offset + cursor);
+        cursor += entry.protected;
+      }
+      continue;
+    }
+    const plain = await decryptSpan(ciphertext);
     plain.copy(output, sample.offset);
   }
   return output;
