@@ -43,6 +43,8 @@ export type SettingsAction =
   | { type: "audioQuality"; value: AudioQualityPreference | "auto" }
   | { type: "audioSpatial"; value: SpatialMode }
   | { type: "audioDevice"; value: string }
+  | { type: "audioDecryptor"; value: string }
+  | { type: "audioManifest"; value: string }
   | { type: "lastfmConnect" | "lastfmDisconnect" };
 
 /** A stored option value paired with its display label. */
@@ -63,6 +65,10 @@ export interface SettingsState {
   audioQuality: AudioQualityPreference | "auto";
   audioSpatial: SpatialMode;
   audioDevice: string;
+  /** Wrapper decrypt socket; when set, ciphertext is decrypted by that service. */
+  audioDecryptor: string;
+  /** Wrapper manifest socket, used instead of the API's manifest when set. */
+  audioManifest: string;
   /** Resolved ffmpeg path, or null when none is available. */
   audioFfmpeg: string | null;
   lastfm: {
@@ -172,6 +178,8 @@ export function getSettingsState(): SettingsState {
     audioQuality: config.getAudioQuality(),
     audioSpatial: config.getAudioSpatial(),
     audioDevice: config.getAudioWidevineDevice() ?? "",
+    audioDecryptor: config.getAudioDecryptorService(),
+    audioManifest: config.getAudioManifestService(),
     audioFfmpeg: findFfmpeg(config.getAudioFfmpegPath() ?? undefined),
     lastfm: {
       available: lastfm.isConfigured(),
@@ -279,6 +287,10 @@ function isSettingsAction(
       );
     case "audioDevice":
       return typeof data.value === "string" && data.value.length <= 4096;
+    case "audioDecryptor":
+      return typeof data.value === "string" && data.value.trim().length <= 256;
+    case "audioManifest":
+      return typeof data.value === "string" && data.value.trim().length <= 256;
     case "lastfmEnabled":
       return (
         state.lastfm.available &&
@@ -340,6 +352,12 @@ export function applySettingsAction(action: unknown): SettingsState {
       break;
     case "audioDevice":
       config.setAudioWidevineDevice(action.value.trim() ? action.value.trim() : null);
+      break;
+    case "audioDecryptor":
+      config.setAudioDecryptorService(action.value.trim());
+      break;
+    case "audioManifest":
+      config.setAudioManifestService(action.value.trim());
       break;
     case "discord":
       config.setDiscordEnabled(action.value);

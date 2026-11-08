@@ -183,5 +183,15 @@ describe('settings actions', () => {
     expect(() => applySettingsAction({ type: 'audioQuality', value: 'ultra' })).toThrow();
     expect(() => applySettingsAction({ type: 'audioSpatial', value: 'objects' })).toThrow();
     expect(() => applySettingsAction({ type: 'audioDevice', value: 42 })).toThrow();
+
+    // Wrapper mode: the decrypt socket switches the pipeline away from keys.
+    applySettingsAction({ type: 'audioDecryptor', value: '  127.0.0.1:10020 ' });
+    expect(getSettingsState().audioDecryptor).toBe('127.0.0.1:10020');
+    applySettingsAction({ type: 'audioManifest', value: ' 127.0.0.1:20020 ' });
+    expect(getSettingsState().audioManifest).toBe('127.0.0.1:20020');
+    applySettingsAction({ type: 'audioDecryptor', value: '' });
+    expect(getSettingsState().audioDecryptor).toBe('');
+    expect(() => applySettingsAction({ type: 'audioDecryptor', value: 'x'.repeat(300) })).toThrow();
+    expect(() => applySettingsAction({ type: 'audioManifest', value: 7 })).toThrow();
   });
 });

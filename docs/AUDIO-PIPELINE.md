@@ -170,6 +170,15 @@ That is a licence-level answer, not a schema error — headers, challenge encodi
 `uri` and `adamId` are all accepted. The remaining requirement is a CDM device
 Apple recognises.
 
+This is not a limitation of Lidra's request. Running the reference downloader's
+own flow — its embedded L3 device, its `webPlayback` asset lookup, its
+`#EXT-X-KEY` KID, its `getPSSH` header, its JSON body — reproduces `{"status":
+-1003}` exactly. The same answer comes back for a correct KID, a random KID and
+a deliberately corrupted challenge, so Apple refuses before it looks at the
+licence content at all: the device credential, not the request shape, is what is
+being rejected. Widevine device blobs are Google-signed per device, so this
+cannot be produced locally; it has to come from a provisioned CDM.
+
 ```
 PSSH ──► SignedMessage(LicenseRequest)  signed with the device RSA key
       ──► POST play.itunes.apple.com/…/acquireWebPlaybackLicense
@@ -198,6 +207,10 @@ optional `Authorization: Bearer $LIDRA_KEY_TOKEN`.
 ### Wrapper decrypt socket (`LIDRA_DECRYPTOR`)
 
 Compatibility with the wrapper-style decryptor used by the reference downloader.
+Set it in Settings → Audio → *Wrapper decrypt socket* (`host:port`), and
+optionally *Wrapper manifest socket* for a wrapper that serves the playlist
+itself. Setting the decrypt socket switches the pipeline to wrapper mode; the
+key never reaches Lidra, it only sees ciphertext in and plaintext out.
 Set `LIDRA_DECRYPTOR=127.0.0.1:10020` (or `unix:/path`) and Lidra sends
 ciphertext instead of asking for keys:
 

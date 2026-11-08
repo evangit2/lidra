@@ -42,6 +42,10 @@ vi.mock("../src/config", () => ({
   getAudioSpatial: vi.fn(() => "bed"),
   setAudioSpatial: vi.fn(),
   getAudioWidevineDevice: vi.fn(() => null),
+  getAudioDecryptorService: vi.fn(() => ""),
+  getAudioManifestService: vi.fn(() => ""),
+  setAudioDecryptorService: vi.fn(),
+  setAudioManifestService: vi.fn(),
   setAudioWidevineDevice: vi.fn(),
   getAudioFfmpegPath: vi.fn(() => null),
 }));

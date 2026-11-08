@@ -280,6 +280,10 @@ export interface TrayStrings {
   audioSpatial: string;
   audioDevice: string;
   audioDeviceHint: string;
+  audioDecryptor: string;
+  audioDecryptorHint: string;
+  audioManifest: string;
+  audioManifestHint: string;
   audioFfmpegReady: string;
   audioFfmpegMissing: string;
   qualityAuto: string;
@@ -348,6 +352,14 @@ const TRAY_TEXT: Record<keyof TrayStrings, Record<string, string>> = {
   audioDevice: { en: 'CDM device' },
   audioDeviceHint: {
     en: 'Path to a .wvd file, or a folder with client_id.bin and private_key.pem. Takes effect after restarting Lidra.',
+  },
+  audioDecryptor: { en: 'Wrapper decrypt socket' },
+  audioDecryptorHint: {
+    en: 'host:port of a wrapper that decrypts for you — the key never reaches Lidra. Setting it switches the pipeline to wrapper mode, which is what Apple’s FairPlay masters need.',
+  },
+  audioManifest: { en: 'Wrapper manifest socket' },
+  audioManifestHint: {
+    en: 'Optional host:port of a wrapper that hands out the manifest; use it when the wrapper, not the API, should decide the renditions.',
   },
   audioFfmpegReady: { en: 'ffmpeg: ready' },
   audioFfmpegMissing: { en: 'ffmpeg: missing — lossless and Dolby cannot play' },

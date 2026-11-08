@@ -64,6 +64,10 @@
     if (state.lastfm.available && focusedId === 'lastfmDisconnect' && !state.lastfm.connected) byId('lastfmConnect').focus();
     const device = byId('audioDevice');
     if (document.activeElement !== device) device.value = state.audioDevice;
+    const decryptor = byId('audioDecryptor');
+    if (document.activeElement !== decryptor) decryptor.value = state.audioDecryptor;
+    const manifest = byId('audioManifest');
+    if (document.activeElement !== manifest) manifest.value = state.audioManifest;
     byId('audio-ffmpeg').textContent = state.audioFfmpeg
       ? `${state.labels.audioFfmpegReady} — ${state.audioFfmpeg}`
       : state.labels.audioFfmpegMissing;
@@ -105,6 +109,9 @@
   byId('audioDevice').addEventListener('change', () =>
     apply({ type: 'audioDevice', value: byId('audioDevice').value }),
   );
+  for (const key of ['audioDecryptor', 'audioManifest']) {
+    byId(key).addEventListener('change', () => apply({ type: key, value: byId(key).value }));
+  }
   for (const key of ['lastfmConnect', 'lastfmDisconnect']) {
     byId(key).addEventListener('click', () => apply({ type: key }));
   }

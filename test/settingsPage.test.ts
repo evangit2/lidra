@@ -31,7 +31,8 @@ function fixture(): SettingsState {
     musicService: 'music', startPage: 'new', theme: 'apple-music', zoomFactor: 1,
     closeToTray: false, notifications: true, discord: false,
     audioEnabled: true, audioQuality: 'hi-res', audioSpatial: 'binaural',
-    audioDevice: '/tmp/device.wvd', audioFfmpeg: '/usr/bin/ffmpeg',
+    audioDevice: '/tmp/device.wvd', audioDecryptor: '', audioManifest: '',
+    audioFfmpeg: '/usr/bin/ffmpeg',
     lastfm: { available: true, customEndpoint: false, connected: false, enabled: false, username: '' },
     options: {
       musicService: [{ value: 'music', label: 'Apple Music' }, { value: 'classical', label: 'Apple Music Classical' }],
