@@ -14,7 +14,8 @@
     "test:playback": "electron test/e2e/audio-playback.cjs",
     "probe:widevine": "electron test/e2e/widevine-probe.cjs",
     "probe:atmos": "electron test/e2e/atmos-integrity.cjs",
-    "probe:badge": "electron test/e2e/quality-badge.cjs"
+    "probe:badge": "electron test/e2e/quality-badge.cjs",
+    "verify:ffmpeg": "node scripts/verify-packaged-ffmpeg.cjs"
   },
   "author": "Martin Wimpress <code@wimpress.io>",
   "homepage": "https://github.com/evangit2/lidra",

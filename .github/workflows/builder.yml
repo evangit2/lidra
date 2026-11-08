@@ -245,6 +245,11 @@ jobs:
           LIDRA_LASTFM_API_SECRET: ${{ startsWith(github.ref, 'refs/tags/') && secrets.LIDRA_LASTFM_API_SECRET || '' }}
       - name: Build distributables
         run: npx electron-builder --publish never ${{ matrix.targets }}
+      # ffmpeg-static installs the host binary, so packaging for another platform
+      # silently ships one that cannot execute. Fail instead of degrading later.
+      - name: Verify bundled ffmpeg matches the target platform
+        run: node scripts/verify-packaged-ffmpeg.cjs
+
       - name: Validate Flatpak AppStream metadata
         if: matrix.os == 'linux'
         run: appstreamcli validate --no-net release/metainfo/*.metainfo.xml

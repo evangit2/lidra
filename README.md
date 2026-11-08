@@ -123,9 +123,16 @@ ffmpeg build for its own architecture; the macOS lanes build one architecture pe
 runner so the binary always matches.
 
 Verified locally: the Linux x64 AppImage builds, launches, and resolves the bundled
-ffmpeg from `app.asar.unpacked`. macOS and Windows packaging configuration is
-validated by the config gate, but those artefacts are only produced by CI on their
-own runners — they have not been built on this machine.
+ffmpeg from `app.asar.unpacked`. A Windows x64 packaging run got as far as the
+NSIS installer and produced `win-unpacked/Lidra.exe` with the full resource tree;
+it stops there only because wine on this machine lacks 32-bit support, which is
+what the installer step needs. macOS cannot be packaged on Linux at all.
+
+Because `ffmpeg-static` installs the *host* binary, every build now runs
+`scripts/verify-packaged-ffmpeg.cjs` after packaging: it opens the bundled binary,
+checks its magic bytes and file name against the target platform, and fails the
+build if they disagree. Running the check against the local Windows cross-build
+correctly rejects it — that package contains a Linux ELF binary, not `ffmpeg.exe`.
 
 ## Install
 
