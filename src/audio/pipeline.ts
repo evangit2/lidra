@@ -172,6 +172,7 @@ export class TrackPipeline {
   private readonly spatial: SpatialMode;
   /** Mode actually used for this track: a wrapper that is down is a key source. */
   private effectiveMode: "key" | "wrapper";
+  private tee: import("node:fs").WriteStream | null = null;
   private bytesIn = 0;
   private readonly startedAt = Date.now();
   private transcoder: Transcoder | null = null;
@@ -365,6 +366,12 @@ export class TrackPipeline {
 
       const { init: plainInit, info } = rewriteInit(encryptedInit);
       await transcoder.write(plainInit);
+      if (process.env.LIDRA_TEE_DIR) {
+        // Diagnostic: keep exactly what ffmpeg is fed so a bad timeline can be
+        // reproduced offline.
+        this.tee = fs.createWriteStream(path.join(process.env.LIDRA_TEE_DIR, "input.bin"));
+        this.tee.write(plainInit);
+      }
 
       for (const segment of playlist.segments) {
         const isEncrypted = Boolean(segment.key?.uri);
@@ -379,10 +386,13 @@ export class TrackPipeline {
           ? await this.decrypt(encrypted, keyUri, info)
           : encrypted;
         await transcoder.write(plain);
+        this.tee?.write(plain);
         if (this.state === "preparing") this.setState("streaming");
       }
 
       await transcoder.finish();
+      this.tee?.end();
+      this.tee = null;
       this.setState("complete");
       pipelineLog.info(
         `complete ${this.asset.name} (${variant.label}) in ${Date.now() - this.startedAt}ms`,

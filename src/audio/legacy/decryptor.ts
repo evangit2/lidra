@@ -93,12 +93,35 @@ export class LegacyDecryptor {
     const socket = await this.connect();
     // SwitchKeys (four zero bytes) only separates one key from the next; sending it
     // before the first arm makes the service drop the connection.
-    if (this.armed) socket.write(Buffer.from([0, 0, 0, 0]));
     LegacyDecryptor.sendString(socket, request.adamId);
     LegacyDecryptor.sendString(socket, request.keyUri);
     await this.drain();
     this.armed = `${request.adamId}\u0000${request.keyUri}`;
     legacyLog.info(`armed decryptor for ${request.adamId}`);
+  }
+
+  /**
+   * Re-arm at a fragment boundary.
+   *
+   * The service keeps per-fragment state: the reference client sends a key-switch
+   * marker plus both strings before every segment after the first. Arming once for
+   * the whole track leaves later fragments decrypting against stale state, which
+   * decodes as garbage.
+   */
+  async armFragment(request: LegacyRequest): Promise<void> {
+    const task = this.queue.then(async () => {
+      const socket = await this.connect();
+      if (this.armed) socket.write(Buffer.from([0, 0, 0, 0]));
+      LegacyDecryptor.sendString(socket, request.adamId);
+      LegacyDecryptor.sendString(socket, request.keyUri);
+      await this.drain();
+      this.armed = `${request.adamId}\u0000${request.keyUri}`;
+    });
+    this.queue = task.then(
+      () => undefined,
+      () => undefined,
+    );
+    await task;
   }
 
   /** Resolve once everything written so far has been flushed to the kernel. */

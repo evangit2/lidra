@@ -451,6 +451,15 @@ function publishQuality(payload: {
   verdict: "ok" | "mismatch";
   requested?: string;
   mismatches?: string[];
+  tier?: string;
+  detail?: string;
+  codec?: string;
+  sampleRate?: number;
+  bitDepth?: number | null;
+  channels?: number;
+  bitrateKbps?: number | null;
+  transport?: string;
+  verified?: boolean;
 }): void {
   if (!win || win.isDestroyed()) return;
   const script = `window.__lidraQuality && window.__lidraQuality(${JSON.stringify(payload)})`;
@@ -568,14 +577,27 @@ function initAudioEngine(ses: Electron.Session): AudioEngine {
         publishQuality({ label: snapshot.error, verdict: "mismatch", requested: snapshot.variant?.tier });
       }
       if (snapshot.state === "streaming" && snapshot.check) {
+        const facts = snapshot.facts;
+        const wrapped = wrapperService?.status().state === "running";
         publishQuality({
           label:
-            snapshot.variant?.joc && snapshot.facts?.atmos
+            snapshot.variant?.joc && facts?.atmos
               ? `${snapshot.check.label} · JOC`
               : snapshot.check.label,
           verdict: snapshot.check.ok ? "ok" : "mismatch",
           requested: snapshot.variant?.tier,
           mismatches: snapshot.check.mismatches,
+          tier: facts?.tier ?? snapshot.variant?.tier,
+          detail: facts?.label ?? snapshot.variant?.label,
+          codec: facts?.codec,
+          sampleRate: facts?.sampleRate,
+          bitDepth: facts?.bitDepth ?? null,
+          channels: facts?.channels,
+          bitrateKbps:
+            facts?.bitrateKbps ??
+            (snapshot.variant?.bandwidth ? Math.round(snapshot.variant.bandwidth / 1000) : null),
+          transport: wrapped ? "Apple FairPlay · wrapper" : "Widevine licence",
+          verified: snapshot.check.ok,
         });
       }
     },

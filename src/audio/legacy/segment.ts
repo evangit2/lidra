@@ -185,6 +185,9 @@ export async function decryptSegmentLegacy(
   if (layout.samples.length === 0) {
     throw new Error("no samples found in fragment");
   }
+  // Re-arm at the fragment boundary so the service's per-fragment state matches.
+  await decryptor.armFragment(request);
+
   const output = Buffer.from(segment);
   const cryptBlocks = request.cryptByteBlock ?? 0;
   const skipBlocks = request.skipByteBlock ?? 0;
@@ -227,6 +230,12 @@ export async function decryptSegmentLegacy(
       // this transport does not do.
       throw new Error("per-sample IV streams are not supported by the legacy transport");
     }
+    if (process.env.LIDRA_DEBUG_SUBS && sample.subsamples) {
+      const total = sample.subsamples.reduce((sum, e) => sum + e.clear + e.protected, 0);
+      if (total !== sample.size) {
+        console.warn(`[subs] sample size=${sample.size} table=${total} entries=${sample.subsamples.length}`);
+      }
+    }
     if (sample.subsamples && sample.subsamples.length > 0) {
       let cursor = 0;
       for (const entry of sample.subsamples) {
@@ -237,12 +246,22 @@ export async function decryptSegmentLegacy(
           throw new Error("subsample exceeds the sample buffer");
         }
         const plainSpan = await decryptSpan(Buffer.from(span));
+        if (process.env.LIDRA_DEBUG_SUBS && sample.offset < 12000) {
+          console.warn(
+            `[sub] off=${sample.offset} size=${sample.size} clear=${entry.clear} prot=${entry.protected} enc=${span.subarray(0, 16).toString("hex")} plain=${plainSpan.subarray(0, 16).toString("hex")}`,
+          );
+        }
         plainSpan.copy(output, sample.offset + cursor);
         cursor += entry.protected;
       }
       continue;
     }
     const plain = await decryptSpan(ciphertext);
+    if (process.env.LIDRA_DEBUG_SUBS && output.length > 0 && sample.offset < 12000) {
+      console.warn(
+        `[sample] off=${sample.offset} size=${sample.size} enc=${ciphertext.subarray(0, 16).toString("hex")} plain=${plain.subarray(0, 16).toString("hex")}`,
+      );
+    }
     plain.copy(output, sample.offset);
   }
   return output;
