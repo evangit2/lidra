@@ -1,7 +1,7 @@
 <h1 align="center">
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/lidra-logo.png?v=2">
-  <img src="assets/lidra-logo-light.png?v=2" width="128" height="128" alt="Lidra">
+  <source media="(prefers-color-scheme: dark)" srcset="assets/lidra-logo.png?v=3">
+  <img src="assets/lidra-logo-light.png?v=3" width="128" height="128" alt="Lidra">
 </picture>
   <br />
   Lidra
