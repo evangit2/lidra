@@ -82,6 +82,47 @@ async function main() {
     "REPORT " + JSON.stringify({ status: "session", hasDevToken: true, hasMediaUserToken: true }),
   );
 
+  if (process.env.LIDRA_WEBPLAYBACK) {
+    const id = process.env.LIDRA_WEBPLAYBACK;
+    const response = await fetch("https://play.music.apple.com/WebObjects/MZPlay.woa/wa/webPlayback", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: "https://music.apple.com",
+        referer: "https://music.apple.com/",
+        "user-agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        authorization: `Bearer ${developerToken}`,
+        "x-apple-music-user-token": mediaUserToken,
+      },
+      body: JSON.stringify({ salableAdamId: id }),
+    });
+    const text = await response.text();
+    let payload = null;
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      // plain text error
+    }
+    const blob = payload ? JSON.stringify(payload) : text;
+    console.log(
+      "REPORT " +
+        JSON.stringify({
+          status: "webplayback",
+          httpStatus: response.status,
+          bytes: text.length,
+          keys: payload ? Object.keys(payload) : null,
+          psshUris: [...blob.matchAll(/data:text\/plain;base64,[A-Za-z0-9+/=]{20,}/g)]
+            .map((m) => m[0].slice(0, 44))
+            .slice(0, 3),
+          skdUris: [...blob.matchAll(/skd:\/\/[^"\\]{0,60}/g)].map((m) => m[0]).slice(0, 4),
+          preview: blob.slice(0, 240),
+        }),
+    );
+    app.exit(0);
+    return;
+  }
+
   const credentials = { developerToken: developerToken, mediaUserToken: mediaUserToken };
   const headers = {
     Authorization: `Bearer ${developerToken}`,

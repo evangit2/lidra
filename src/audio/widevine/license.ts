@@ -16,7 +16,14 @@ import crypto from "node:crypto";
 import log from "electron-log/main";
 import { aesCmac } from "./cmac";
 import { ProtoWriter, parseProto, firstBytes, firstVarint, allBytes } from "./protobuf";
-import { parseWidevinePssh, buildLicenseKeyUri, psshKeyId, PsshError } from "./pssh";
+import {
+  parseWidevinePssh,
+  buildCencHeader,
+  buildLicenseKeyUri,
+  deriveKid,
+  psshKeyId,
+  PsshError,
+} from "./pssh";
 import type { WidevineDevice } from "./device";
 
 const licenseLog = log.scope("audio.widevine");
@@ -40,8 +47,14 @@ export interface LicenseRequestOptions {
   device: WidevineDevice;
   credentials: LicenseCredentials;
   adamId: string;
-  /** The playlist's key URI: a `data:` URI carrying a Widevine pssh box. */
-  keyUri: string;
+  /**
+   * The playlist's key URI. When Apple declares FairPlay (`skd://`) instead — a
+   * `data:` PSSH is not always offered — the request is built from a synthesized
+   * CENC header, which is what Apple's own clients send.
+   */
+  keyUri?: string;
+  /** Optional KID override for the synthesized header. */
+  kid?: Buffer;
   storefront?: string;
   fetchImpl?: typeof fetch;
   endpoint?: string;
@@ -201,23 +214,34 @@ export async function acquireContentKey(options: LicenseRequestOptions): Promise
     throw new LicenseError("sign in to Apple Music before requesting a licence");
   }
 
-  let pssh;
-  try {
-    pssh = parseWidevinePssh(keyUri);
-  } catch (error) {
-    if (error instanceof PsshError) throw new LicenseError(error.message);
-    throw error;
+  let cencHeader: Buffer;
+  let kid: Buffer | null = null;
+  if (keyUri && !keyUri.startsWith("skd://")) {
+    let pssh;
+    try {
+      pssh = parseWidevinePssh(keyUri);
+    } catch (error) {
+      if (error instanceof PsshError) throw new LicenseError(error.message);
+      throw error;
+    }
+    cencHeader = pssh.data;
+    kid = psshKeyId(pssh);
+  } else {
+    // FairPlay-only manifest: synthesize the header the way Apple's Widevine
+    // clients do. The licence is scoped to adamId, so the KID is a placeholder.
+    kid = options.kid && options.kid.length === 16 ? options.kid : deriveKid("lidra", adamId);
+    cencHeader = buildCencHeader(kid);
+    licenseLog.info(`manifest declared FairPlay; requesting a Widevine licence for ${adamId}`);
   }
 
-  const { signed, message } = buildLicenseRequest(device, pssh.data);
-  const kid = psshKeyId(pssh);
+  const { signed, message } = buildLicenseRequest(device, cencHeader);
 
   const body = {
     challenge: signed.toString("base64"),
     "key-system": "com.widevine.alpha",
     // Apple is sent the CENC header in the same shape its own clients use, with
     // the KID the playlist declared.
-    uri: buildLicenseKeyUri(pssh.data),
+    uri: buildLicenseKeyUri(cencHeader),
     adamId,
     isLibrary: false,
     "user-initiated": true,
@@ -252,7 +276,7 @@ export async function acquireContentKey(options: LicenseRequestOptions): Promise
     throw new LicenseError(`licence endpoint returned ${response.status}: ${text.slice(0, 300)}`, response.status);
   }
 
-  let payload: { license?: string; errorCode?: number; status?: number };
+  let payload: { license?: string; errorCode?: number; status?: number; message?: string };
   try {
     payload = JSON.parse(text) as typeof payload;
   } catch {
@@ -260,8 +284,12 @@ export async function acquireContentKey(options: LicenseRequestOptions): Promise
   }
 
   if (payload.errorCode || payload.status) {
+    // Apple reports a refusal in the body with HTTP 200, so the body is the only
+    // diagnostic available. -1003 means the CDM device is not authorised.
     throw new LicenseError(
-      `licence refused (errorCode ${payload.errorCode ?? 0}, status ${payload.status ?? 0})`,
+      `licence refused (errorCode ${payload.errorCode ?? 0}, status ${payload.status ?? 0})${
+        payload.message ? `: ${payload.message}` : ""
+      }`,
     );
   }
   if (!payload.license) throw new LicenseError("licence response carried no licence");

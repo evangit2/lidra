@@ -153,6 +153,23 @@ unpacked out of the asar) rather than depending on the machine having one:
 Point `LIDRA_WIDEVINE_DEVICE` at a `.wvd` file, or at a directory containing
 `client_id.bin` and `private_key.pem`. Lidra then requests the licence itself:
 
+Apple does not always offer a Widevine `data:` PSSH in the media playlist. Some
+renditions declare FairPlay (`skd://itunes.apple.com/P000000000/s1/e1`) even to a
+web session — verified on a 24-bit/192 kHz Atmos-era master. Lidra therefore
+follows the reference client: when the key URI is not a Widevine PSSH it
+synthesizes the CENC header (AESCTR + a stable KID derived from the song) and
+sends that. The licence is scoped to `adamId`, so the KID only has to be stable.
+
+The request shape is verified against the live endpoint with a throwaway device:
+
+```
+HTTP 200  {"status": -1003}      # device not authorised
+```
+
+That is a licence-level answer, not a schema error — headers, challenge encoding,
+`uri` and `adamId` are all accepted. The remaining requirement is a CDM device
+Apple recognises.
+
 ```
 PSSH ──► SignedMessage(LicenseRequest)  signed with the device RSA key
       ──► POST play.itunes.apple.com/…/acquireWebPlaybackLicense

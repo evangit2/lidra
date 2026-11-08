@@ -6,6 +6,9 @@
  * WidevineCencHeader protobuf, which the licence request must carry verbatim.
  */
 
+import crypto from "node:crypto";
+import { ProtoWriter } from "./protobuf";
+
 const WIDEVINE_SYSTEM_ID = "edef8ba979d64acea3c827dcd51d21ed";
 
 export interface PsshData {
@@ -122,6 +125,33 @@ function parseProtoHeaderKeyId(data: Buffer): Buffer | null {
 export function buildLicenseKeyUri(cencHeader: Buffer): string {
   const prefix = Buffer.from("0123456789abcdef0123456789abcdef", "ascii");
   return `data:;base64,${Buffer.concat([prefix, cencHeader]).toString("base64")}`;
+}
+
+/**
+ * Build a WidevineCencHeader from scratch.
+ *
+ * Apple keys the licence on the track it was asked about, not on the header, and
+ * its own clients send a synthesized header when the manifest only advertises
+ * FairPlay. The KID therefore does not have to match the one in `tenc`; it only
+ * has to be stable for the request.
+ */
+export function buildCencHeader(kid: Buffer, contentId?: string): Buffer {
+  if (kid.length !== 16) throw new PsshError("a CENC header needs a 16-byte KID");
+  const writer = new ProtoWriter()
+    .varint(1, 1) // algorithm: AESCTR
+    .bytes(2, kid); // key_id
+  if (contentId && contentId.length > 0) {
+    writer.bytes(4, Buffer.from(Buffer.from(contentId, "utf8").toString("base64"), "utf8"));
+  }
+  return writer.finish();
+}
+
+/**
+ * Derive a stable pseudo-KID for a track. Used only to fill the CENC header when
+ * the manifest's key URI is FairPlay; it never selects content.
+ */
+export function deriveKid(...parts: string[]): Buffer {
+  return crypto.createHash("sha256").update(parts.join("/")).digest().subarray(0, 16);
 }
 
 /** Parse a key URI, insisting that it describes a Widevine-protected track. */
