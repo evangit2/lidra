@@ -51,8 +51,7 @@ export function parseWslList(raw: string): WslDistro[] {
     if (columns.length < 3) continue;
     const version = Number.parseInt(columns[columns.length - 1], 10);
     if (version !== 1 && version !== 2) continue;
-    const state = columns[columns.length - 2];
-    if (/^(running|stopped|installing|uninstalling)$/i.test(state) === false) continue;
+    // The state column is localised, so it is skipped rather than matched.
     rows.push({ name: columns.slice(0, columns.length - 2).join(" "), version, isDefault });
   }
   return rows;
@@ -216,7 +215,14 @@ export async function ensureWslRuntime(options: {
   }
 
   progress(`importing the wrapper environment (${path.basename(payload)})`);
-  const imported = await runCommand("wsl.exe", importArguments(distro, installDir, payload), 600_000);
+  let imported = await runCommand("wsl.exe", importArguments(distro, installDir, payload), 600_000);
+  // The listing above can miss a distro (older WSL builds, localised output), in
+  // which case the import reports that the name is taken. Clear and retry once.
+  if (imported.code !== 0 && /already exists|bereits vorhanden|existe d[eé]j[aà]/i.test(imported.stderr)) {
+    progress(`removing the stale ${distro} environment`);
+    await runCommand("wsl.exe", ["--unregister", distro], 120_000);
+    imported = await runCommand("wsl.exe", importArguments(distro, installDir, payload), 600_000);
+  }
   if (imported.code !== 0) {
     return {
       ok: false,

@@ -176,6 +176,30 @@ describe("ensureWslRuntime", () => {
     expect(calls.map((args) => args[0])).toEqual(["--list", "--unregister", "--import"]);
   });
 
+  it("clears a stale environment when the import reports the name is taken", async () => {
+    const calls: string[][] = [];
+    let imports = 0;
+    const runImpl = async (_command: string, args: string[]) => {
+      calls.push(args);
+      if (args[0] === "--list") return { code: 0, stdout: "  NAME STATE VERSION\n", stderr: "" };
+      if (args[0] === "--import") {
+        imports += 1;
+        return imports === 1
+          ? { code: 1, stdout: "", stderr: "Distro 'LidraWrapper' already exists." }
+          : { code: 0, stdout: "", stderr: "" };
+      }
+      return { code: 0, stdout: "", stderr: "" };
+    };
+    const result = await ensureWslRuntime({
+      payloadPaths: [payloadFile()],
+      installDir: fs.mkdtempSync(path.join(os.tmpdir(), "lidra-wsl-home-")),
+      platform: "win32",
+      runImpl,
+    });
+    expect(result.ok).toBe(true);
+    expect(calls.map((args) => args[0])).toEqual(["--list", "--import", "--unregister", "--import"]);
+  });
+
   it("fails clearly when the payload is absent", async () => {
     const result = await ensureWslRuntime({
       payloadPaths: ["/definitely/not/here.tar.gz"],
