@@ -429,9 +429,11 @@ function rebuildTrafWithAdjust(
       const flags = c.flags ?? 0;
       if (flags & 0x000001) {
         const trunData = Buffer.from(buf.subarray(c.offset, c.offset + c.size));
-        const original = trunData.readInt32BE(c.payloadOffset - c.offset + 4);
+        // sample_count precedes data_offset in the track run box.
+        const fieldOffset = c.payloadOffset - c.offset + 8;
+        const original = trunData.readInt32BE(fieldOffset);
         const patched = original - bytesRemovedForMoof;
-        trunData.writeInt32BE(patched, c.payloadOffset - c.offset + 4);
+        trunData.writeInt32BE(patched, fieldOffset);
         kept.push(trunData);
       } else {
         kept.push(Buffer.from(buf.subarray(c.offset, c.offset + c.size)));

@@ -194,12 +194,11 @@ function buildSenc(perIvSize:number, samples:{ iv:Buffer|null, subs:{clear:numbe
 }
 
 function buildTrun(sampleSizes:number[], dataOffset:number): Buffer {
+  // ISO/IEC 14496-12 order: sample_count, data_offset, first_sample_flags, entries.
   const flags = 0x000001 | 0x000200; // data_offset + sample_size
-  const payload = Buffer.concat([ u32be(dataOffset), u32be(sampleSizes.length), ...sampleSizes.map(s=>u32be(s)) ]);
-  // Actually trun payload: data_offset (4 if present), sample_count (4), entries...
-  // But flags require correct ordering: data_offset, first_flags?, durations, sizes etc.
-  // Our parseTrun expects data_offset then sample_count then entries with size only.
-  // However payload above includes data_offset as first 4 then count then sizes. Our makeFull will prepend version/flags, so need to ensure data_offset considered.
+  const offsetBytes = Buffer.alloc(4);
+  offsetBytes.writeInt32BE(dataOffset, 0);
+  const payload = Buffer.concat([ u32be(sampleSizes.length), offsetBytes, ...sampleSizes.map(s=>u32be(s)) ]);
   return makeFullBoxTest("trun", 0, flags, payload);
 }
 function buildTfhd(trackId:number): Buffer { return makeFullBoxTest("tfhd", 0, 0, u32be(trackId)); }
