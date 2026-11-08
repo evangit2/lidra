@@ -247,8 +247,8 @@
       "icon": "build/icon.ico",
       "extraResources": [
         {
-          "from": "build/wrapper-payload",
-          "to": "wrapper-payload"
+          "from": "build/wrapper",
+          "to": "wrapper"
         }
       ]
     },

@@ -116,7 +116,7 @@ export interface WslSetupResult {
     | "ready"
     | "no-wsl"
     | "no-v1-distro"
-    | "no-payload"
+    | "no-runtime"
     | "import-failed"
     | "not-windows";
   detail: string;
@@ -150,10 +150,10 @@ async function run(command: string, args: string[], timeoutMs = 120_000): Promis
   });
 }
 
-/** Where the installer puts the wrapper payload. */
-export function payloadCandidates(resourcesPath: string, repoRoot?: string): string[] {
-  const candidates = [path.join(resourcesPath, "wrapper-payload", "wrapper-rootfs.tar.gz")];
-  if (repoRoot) candidates.push(path.join(repoRoot, "build", "wrapper-payload", "wrapper-rootfs.tar.gz"));
+/** Where the installer puts the wrapper files. */
+export function runtimeArchiveCandidates(resourcesPath: string, repoRoot?: string): string[] {
+  const candidates = [path.join(resourcesPath, "wrapper", "wrapper-rootfs.tar.gz")];
+  if (repoRoot) candidates.push(path.join(repoRoot, "build", "wrapper", "wrapper-rootfs.tar.gz"));
   return candidates;
 }
 
@@ -162,7 +162,7 @@ export function payloadCandidates(resourcesPath: string, repoRoot?: string): str
  * payload shipped with the app when it does not.
  */
 export async function ensureWslRuntime(options: {
-  payloadPaths: string[];
+  archivePaths: string[];
   installDir?: string;
   platform?: NodeJS.Platform;
   runImpl?: typeof run;
@@ -194,12 +194,12 @@ export async function ensureWslRuntime(options: {
     return { ok: true, code: "ready", detail: `${distro} is ready`, distro };
   }
 
-  const payload = options.payloadPaths.find((candidate) => fs.existsSync(candidate));
-  if (!payload) {
+  const archive = options.archivePaths.find((candidate) => fs.existsSync(candidate));
+  if (!archive) {
     return {
       ok: false,
-      code: "no-payload",
-      detail: "the wrapper payload that ships with Lidra is missing",
+      code: "no-runtime",
+      detail: "the wrapper files that ship with Lidra are missing",
       hint: "Reinstall Lidra, or point Settings → Audio at a wrapper folder you already have.",
     };
   }
@@ -214,14 +214,14 @@ export async function ensureWslRuntime(options: {
     await runCommand("wsl.exe", ["--unregister", distro], 120_000);
   }
 
-  progress(`importing the wrapper environment (${path.basename(payload)})`);
-  let imported = await runCommand("wsl.exe", importArguments(distro, installDir, payload), 600_000);
+  progress(`importing the wrapper environment (${path.basename(archive)})`);
+  let imported = await runCommand("wsl.exe", importArguments(distro, installDir, archive), 600_000);
   // The listing above can miss a distro (older WSL builds, localised output), in
   // which case the import reports that the name is taken. Clear and retry once.
   if (imported.code !== 0 && /already exists|bereits vorhanden|existe d[eé]j[aà]/i.test(imported.stderr)) {
     progress(`removing the stale ${distro} environment`);
     await runCommand("wsl.exe", ["--unregister", distro], 120_000);
-    imported = await runCommand("wsl.exe", importArguments(distro, installDir, payload), 600_000);
+    imported = await runCommand("wsl.exe", importArguments(distro, installDir, archive), 600_000);
   }
   if (imported.code !== 0) {
     return {

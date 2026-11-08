@@ -81,8 +81,8 @@ import { KeyCache, createKeyProvider } from "./audio/keys";
 import { createWidevineProvider } from "./audio/widevine/provider";
 import { webPlaybackMaster } from "./audio/webplayback";
 import { WrapperService, isListening } from "./audio/wrapper/service";
-import { buildWslCommand, ensureWslRuntime, payloadCandidates } from "./audio/wrapper/wsl";
-import { readWrapperSession, wrapperBaseDir } from "./audio/wrapper/session";
+import { buildWslCommand, ensureWslRuntime, runtimeArchiveCandidates } from "./audio/wrapper/wsl";
+import { hostPathForWrapper, readWrapperSession, wrapperBaseDir } from "./audio/wrapper/session";
 import { dismissTwoFactorPrompt, showTwoFactorPrompt } from "./twoFactorWindow";
 import { initAudioBridge } from "./audio/bridge";
 import { findFfmpeg } from "./audio/transcode";
@@ -228,6 +228,11 @@ app.on("before-quit", () => {
 });
 
 let win: BrowserWindow | null = null;
+/**
+ * The wrapper command in force. Windows builds it from the imported WSL
+ * environment at runtime, so the configured value is not always the real one.
+ */
+let activeWrapperCommand: string | null = null;
 let audioEngine: AudioEngine | null = null;
 let rendererDocumentGeneration = 0;
 
@@ -482,9 +487,9 @@ let wrapperService: WrapperService | null = null;
  * configured command's directory.
  */
 async function writeWrapperCode(code: string): Promise<void> {
-  const command = getAudioWrapperCommand();
+  const command = activeWrapperCommand ?? getAudioWrapperCommand();
   const match = /(?:cd\s+([^&]+?)\s*&&)/.exec(command);
-  const root = match ? expandWrapperCommand(match[1]!.trim()) : os.homedir();
+  const root = hostPathForWrapper(match ? expandWrapperCommand(match[1]!.trim()) : os.homedir());
   const path2fa = path.join(root, "rootfs/data/data/com.apple.android.music/files/2fa.txt");
   try {
     fs.mkdirSync(path.dirname(path2fa), { recursive: true, mode: 0o700 });
@@ -522,7 +527,7 @@ async function prepareWindowsWrapper(
     return Number.isInteger(candidate) ? candidate : fallback;
   };
   const setup = await ensureWslRuntime({
-    payloadPaths: payloadCandidates(process.resourcesPath, app.getAppPath()),
+    archivePaths: runtimeArchiveCandidates(process.resourcesPath, app.getAppPath()),
     onProgress: (message: string) => mainLog.info(`wrapper setup: ${message}`),
   });
   if (!setup.ok) {
@@ -536,12 +541,11 @@ async function prepareWindowsWrapper(
     return;
   }
   mainLog.info(`wrapper setup: ${setup.detail}`);
-  wrapper.setCommand(
-    buildWslCommand({
-      decryptPort: portOf(decryptorAddress, 10020),
-      manifestPort: portOf(manifestAddress, 20020),
-    }),
-  );
+  activeWrapperCommand = buildWslCommand({
+    decryptPort: portOf(decryptorAddress, 10020),
+    manifestPort: portOf(manifestAddress, 20020),
+  });
+  wrapper.setCommand(activeWrapperCommand);
   const status = await wrapper.start();
   mainLog.info(`wrapper ${status.state}${status.detail ? ` (${status.detail})` : ""}`);
 }
@@ -872,7 +876,9 @@ function loadAssets(): Assets {
  * the UI. Returns true when a cookie was written.
  */
 async function applyWrapperSession(ses: Electron.Session): Promise<boolean> {
-  const state = readWrapperSession(wrapperBaseDir(getAudioWrapperCommand()));
+  const state = readWrapperSession(
+    wrapperBaseDir(activeWrapperCommand ?? getAudioWrapperCommand()),
+  );
   if (!state) return false;
   // Only fill in a missing session. A player that signed in through Apple's own
   // form already has one, and rewriting the cookie would reload the page for no

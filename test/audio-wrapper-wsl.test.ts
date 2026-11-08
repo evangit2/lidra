@@ -2,12 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { hostPathForWrapper } from "../src/audio/wrapper/session";
 import {
   buildWslCommand,
   ensureWslRuntime,
   importArguments,
   parseWslList,
-  payloadCandidates,
+  runtimeArchiveCandidates,
   startWslWrapper,
   toWslPath,
   WSL_DISTRO,
@@ -104,7 +105,7 @@ describe("importArguments", () => {
 });
 
 describe("ensureWslRuntime", () => {
-  const payloadFile = (): string => {
+  const archiveFile = (): string => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lidra-wsl-"));
     const file = path.join(dir, "wrapper-rootfs.tar.gz");
     fs.writeFileSync(file, "payload");
@@ -112,13 +113,13 @@ describe("ensureWslRuntime", () => {
   };
 
   it("does nothing off Windows", async () => {
-    const result = await ensureWslRuntime({ payloadPaths: [], platform: "linux" });
+    const result = await ensureWslRuntime({ archivePaths: [], platform: "linux" });
     expect(result.code).toBe("not-windows");
   });
 
   it("reports a missing WSL feature with the command that fixes it", async () => {
     const result = await ensureWslRuntime({
-      payloadPaths: [],
+      archivePaths: [],
       platform: "win32",
       runImpl: async () => ({
         code: 1,
@@ -132,12 +133,12 @@ describe("ensureWslRuntime", () => {
 
   it("accepts an existing version 1 environment without importing", async () => {
     const runImpl = vi.fn(async () => ({ code: 0, stdout: LISTING, stderr: "" }));
-    const result = await ensureWslRuntime({ payloadPaths: [], platform: "win32", runImpl });
+    const result = await ensureWslRuntime({ archivePaths: [], platform: "win32", runImpl });
     expect(result).toMatchObject({ ok: true, code: "ready", distro: "LidraWrapper" });
     expect(runImpl).toHaveBeenCalledTimes(1);
   });
 
-  it("imports the shipped payload when no environment exists", async () => {
+  it("imports the shipped files when no environment exists", async () => {
     const calls: string[][] = [];
     const runImpl = async (_command: string, args: string[]) => {
       calls.push(args);
@@ -147,7 +148,7 @@ describe("ensureWslRuntime", () => {
     };
     const installDir = fs.mkdtempSync(path.join(os.tmpdir(), "lidra-wsl-home-"));
     const result = await ensureWslRuntime({
-      payloadPaths: [payloadFile()],
+      archivePaths: [archiveFile()],
       installDir,
       platform: "win32",
       runImpl,
@@ -167,7 +168,7 @@ describe("ensureWslRuntime", () => {
       return { code: 0, stdout: "", stderr: "" };
     };
     const result = await ensureWslRuntime({
-      payloadPaths: [payloadFile()],
+      archivePaths: [archiveFile()],
       installDir: fs.mkdtempSync(path.join(os.tmpdir(), "lidra-wsl-home-")),
       platform: "win32",
       runImpl,
@@ -191,7 +192,7 @@ describe("ensureWslRuntime", () => {
       return { code: 0, stdout: "", stderr: "" };
     };
     const result = await ensureWslRuntime({
-      payloadPaths: [payloadFile()],
+      archivePaths: [archiveFile()],
       installDir: fs.mkdtempSync(path.join(os.tmpdir(), "lidra-wsl-home-")),
       platform: "win32",
       runImpl,
@@ -200,18 +201,18 @@ describe("ensureWslRuntime", () => {
     expect(calls.map((args) => args[0])).toEqual(["--list", "--import", "--unregister", "--import"]);
   });
 
-  it("fails clearly when the payload is absent", async () => {
+  it("fails clearly when the shipped files are absent", async () => {
     const result = await ensureWslRuntime({
-      payloadPaths: ["/definitely/not/here.tar.gz"],
+      archivePaths: ["/definitely/not/here.tar.gz"],
       platform: "win32",
       runImpl: async () => ({ code: 0, stdout: "  NAME STATE VERSION\n", stderr: "" }),
     });
-    expect(result.code).toBe("no-payload");
+    expect(result.code).toBe("no-runtime");
   });
 
   it("surfaces the importer error", async () => {
     const result = await ensureWslRuntime({
-      payloadPaths: [payloadFile()],
+      archivePaths: [archiveFile()],
       installDir: fs.mkdtempSync(path.join(os.tmpdir(), "lidra-wsl-home-")),
       platform: "win32",
       runImpl: async (_command: string, args: string[]) =>
@@ -223,10 +224,10 @@ describe("ensureWslRuntime", () => {
     expect(result.detail).toContain("WSL 1 is not supported");
   });
 
-  it("finds the payload next to the packaged resources", () => {
-    const paths = payloadCandidates("C:\\Program Files\\Lidra\\resources", "C:\\repo");
+  it("finds the wrapper files next to the packaged resources", () => {
+    const paths = runtimeArchiveCandidates("C:\\Program Files\\Lidra\\resources", "C:\\repo");
     expect(paths[0]).toBe(
-      path.join("C:\\Program Files\\Lidra\\resources", "wrapper-payload", "wrapper-rootfs.tar.gz"),
+      path.join("C:\\Program Files\\Lidra\\resources", "wrapper", "wrapper-rootfs.tar.gz"),
     );
   });
 });
@@ -267,5 +268,19 @@ describe("startWslWrapper", () => {
     const result = await promise;
     expect(result.ok).toBe(false);
     expect(result.detail).toContain("linker64");
+  });
+});
+
+describe("hostPathForWrapper", () => {
+  it("reaches a distro path through the wsl UNC share on Windows", () => {
+    expect(hostPathForWrapper("/opt/lidra", "win32")).toBe("\\\\wsl$\\LidraWrapper\\opt\\lidra");
+    expect(hostPathForWrapper("/opt/lidra/rootfs/data", "win32", "Other")).toBe(
+      "\\\\wsl$\\Other\\opt\\lidra\\rootfs\\data",
+    );
+  });
+
+  it("leaves a native path untouched", () => {
+    expect(hostPathForWrapper("/opt/lidra", "linux")).toBe("/opt/lidra");
+    expect(hostPathForWrapper("C:\\wrapper", "win32")).toBe("C:\\wrapper");
   });
 });

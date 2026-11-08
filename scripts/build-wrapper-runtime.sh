@@ -1,13 +1,13 @@
 #!/bin/bash
-# Build the wrapper payload shipped inside the Windows installer.
+# Build the wrapper files shipped inside the Windows installer.
 #
-# The payload is the Android/Linux FairPlay client the wrapper chroots into. The
+# Those files are the Android/Linux FairPlay client the wrapper chroots into. The
 # account database (rootfs/data) is deliberately left out: it holds MUSIC_TOKEN,
 # cookies and the account link for whoever built the payload.
 set -euo pipefail
 
 SOURCE=${1:-$HOME/.lidra-wrapper/extracted}
-OUT=${2:-build/wrapper-payload}
+OUT=${2:-build/wrapper}
 STAGE=$(mktemp -d)
 
 cleanup() { rm -rf "$STAGE"; }

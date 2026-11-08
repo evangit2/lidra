@@ -29,10 +29,29 @@ export function wrapperBaseDir(command: string | null | undefined): string | nul
   return path.dirname(target);
 }
 
+/**
+ * The path a Windows host uses to reach a file inside the imported distro.
+ *
+ * `\\wsl$\<distro>\...` is a real UNC path, so the ordinary fs calls keep
+ * working while the wrapper still sees its own `/opt/...` layout.
+ */
+export function hostPathForWrapper(
+  baseDir: string,
+  platform: NodeJS.Platform = process.platform,
+  distro = "LidraWrapper",
+): string {
+  if (platform !== "win32") return baseDir;
+  if (!baseDir.startsWith("/")) return baseDir;
+  const sep = String.fromCharCode(92); // backslash, without escaping games
+  const relative = baseDir.replace(/^\/+/, "").split("/").join(sep);
+  return `${sep}${sep}wsl$${sep}${distro}${sep}${relative}`;
+}
+
 /** Read `MUSIC_TOKEN` (and the storefront) the wrapper cached after signing in. */
 export function readWrapperSession(baseDir: string | null): WrapperSession | null {
   if (!baseDir) return null;
-  const tokenPath = path.join(baseDir, "MUSIC_TOKEN");
+  const root = hostPathForWrapper(baseDir);
+  const tokenPath = path.join(root, "MUSIC_TOKEN");
   let mediaUserToken: string;
   try {
     mediaUserToken = fs.readFileSync(tokenPath, "utf8").trim();
@@ -42,7 +61,7 @@ export function readWrapperSession(baseDir: string | null): WrapperSession | nul
   if (!mediaUserToken) return null;
   let storefront: string | undefined;
   try {
-    storefront = fs.readFileSync(path.join(baseDir, "STOREFRONT_ID"), "utf8").trim() || undefined;
+    storefront = fs.readFileSync(path.join(root, "STOREFRONT_ID"), "utf8").trim() || undefined;
   } catch {
     storefront = undefined;
   }
