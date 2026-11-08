@@ -113,8 +113,11 @@ export function buildWslCommand(options: {
     // A colon means a credential pair, which is always quoted.
     .map((argument) => (/^[A-Za-z0-9_.\/@%+=,-]+$/.test(argument) ? argument : shellQuote(argument)))
     .join(" ");
+  // `--base-dir rootfs` is what a hand install passes: without it the wrapper
+  // looks for its Android image somewhere else and exits immediately.
   const script =
     `cd ${shellQuote(directory)} && exec ./wrapper -H ${host} -D ${options.decryptPort} -M ${options.manifestPort}` +
+    ` --base-dir rootfs` +
     (extra ? ` ${extra}` : "");
   // No double quote can survive cmd's parsing of the script, and Windows paths
   // cannot contain one, so this is the safe frame.
@@ -248,6 +251,33 @@ export async function ensureWslRuntime(options: {
       hint: "The WSL feature may be present but version 1 support is disabled. Run 'wsl --set-default-version 1' as admin and retry.",
     };
   }
+
+  // The wrapper chroots into its own Android image, so that image needs the
+  // device nodes a Linux root has. A git checkout cannot carry them and WSL
+  // does not create them inside an imported distro, so add them here — without
+  // them the wrapper dies on its first read of /dev/urandom.
+  progress(`preparing ${distro}`);
+  await runCommand(
+    "wsl.exe",
+    [
+      "-d",
+      distro,
+      "-u",
+      "root",
+      "--",
+      "/bin/sh",
+      "-c",
+      `cd ${WSL_WRAPPER_DIR} && mkdir -p rootfs/dev && ` +
+        "for device in null zero random urandom; do " +
+        "[ -e rootfs/dev/$device ] && continue; " +
+        "cp -a /dev/$device rootfs/dev/$device 2>/dev/null || " +
+        "case $device in null) mknod -m 666 rootfs/dev/$device c 1 3;; " +
+        "zero) mknod -m 666 rootfs/dev/$device c 1 5;; " +
+        "random) mknod -m 666 rootfs/dev/$device c 1 8;; " +
+        "urandom) mknod -m 666 rootfs/dev/$device c 1 9;; esac; done",
+    ],
+    60_000,
+  );
 
   return {
     ok: true,

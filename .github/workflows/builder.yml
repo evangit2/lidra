@@ -248,8 +248,18 @@ jobs:
           # This fork has no Last.fm application secrets. Releases ship with
           # scrobbling disabled rather than failing every build job.
           LIDRA_ALLOW_MISSING_CREDENTIALS: "1"
+      # The FairPlay runtime ships inside every package; it is committed under
+      # vendor/wrapper and copied in by electron-builder.
+      - name: Check the bundled lossless runtime is present
+        shell: bash
+        run: test -x vendor/wrapper/opt/lidra/wrapper && du -sh vendor/wrapper
       - name: Build distributables
         run: npx electron-builder --publish never ${{ matrix.targets }}
+      # A package without the runtime cannot play lossless, and it is a 50 MB
+      # file that is easy to lose in a packaging change: fail loudly instead.
+      - name: Verify the runtime is inside the package
+        shell: bash
+        run: node scripts/verify-packaged-wrapper.cjs
       # ffmpeg-static installs the host binary, so packaging for another platform
       # silently ships one that cannot execute. Fail instead of degrading later.
       - name: Verify bundled ffmpeg matches the target platform

@@ -98,6 +98,10 @@ export class HlsServer {
       "Access-Control-Allow-Headers": "Range, Accept, Content-Type, Origin",
       "Access-Control-Expose-Headers": "Content-Length, Content-Range, Accept-Ranges",
       "Access-Control-Max-Age": "600",
+      // Chromium treats a request from a public page to loopback as a private
+      // network request: without this header the preflight fails and the player
+      // never gets to the manifest, which surfaces as "something went wrong".
+      "Access-Control-Allow-Private-Network": "true",
       Vary: "Origin",
     };
   }

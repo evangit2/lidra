@@ -175,7 +175,10 @@ describe("ensureWslRuntime", () => {
       runImpl,
     });
     expect(result.ok).toBe(true);
-    expect(calls.map((args) => args[0])).toEqual(["--list", "--unregister", "--import"]);
+    expect(calls.map((args) => args[0])).toEqual(["--list", "--unregister", "--import", "-d"]);
+    // The prep pass gives the chrooted image the device nodes a Linux root has.
+    const prep = calls.find((args) => args[0] === "-d");
+    expect(prep?.join(" ")).toContain("rootfs/dev");
   });
 
   it("clears a stale environment when the import reports the name is taken", async () => {
@@ -199,7 +202,7 @@ describe("ensureWslRuntime", () => {
       runImpl,
     });
     expect(result.ok).toBe(true);
-    expect(calls.map((args) => args[0])).toEqual(["--list", "--import", "--unregister", "--import"]);
+    expect(calls.map((args) => args[0])).toEqual(["--list", "--import", "--unregister", "--import", "-d"]);
   });
 
   it("fails clearly when the shipped files are absent", async () => {

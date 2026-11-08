@@ -88,6 +88,14 @@ import {
   runtimeArchiveCandidates,
 } from "./audio/wrapper/wsl";
 import { hostPathForWrapper, readWrapperSession, wrapperBaseDir } from "./audio/wrapper/session";
+import {
+  buildBundledCommand,
+  bundledPayloadPaths,
+  ensureBundledRuntime,
+  findBundledPayload,
+  packPayloadForImport,
+  passwordlessSudo,
+} from "./audio/wrapper/bundled";
 import { dismissTwoFactorPrompt, showTwoFactorPrompt } from "./twoFactorWindow";
 import { initAudioBridge } from "./audio/bridge";
 import { findFfmpeg } from "./audio/transcode";
@@ -518,6 +526,60 @@ function expandWrapperCommand(command: string): string {
   return command.replace(/^~(?=$|\/)/, home).replace(/\$\{?HOME\}?/g, home);
 }
 
+/** Does the configured line point at a wrapper binary that is actually there? */
+function configuredWrapperExists(command: string): boolean {
+  if (!command) return false;
+  const match = /(?:^|&&|;|["'])\s*cd\s+([^&;]+)/.exec(command);
+  const directory = match
+    ? expandWrapperCommand(match[1]!.trim().replace(/^["']|["']$/g, ""))
+    : path.dirname(command);
+  return (
+    fs.existsSync(path.join(directory, "wrapper")) ||
+    fs.existsSync(path.join(directory, "opt", "lidra", "wrapper"))
+  );
+}
+
+/**
+ * Bring up the runtime that ships inside the package, for a machine that has no
+ * wrapper installed. The payload is unpacked into the app's data directory once
+ * and then started through its own glibc loader, so the host's libc version does
+ * not matter.
+ */
+async function prepareBundledWrapper(
+  wrapper: WrapperService,
+  decryptorAddress: string,
+  manifestAddress: string,
+): Promise<void> {
+  const portOf = (address: string, fallback: number): number => {
+    const candidate = Number.parseInt(address.slice(address.lastIndexOf(":") + 1), 10);
+    return Number.isInteger(candidate) ? candidate : fallback;
+  };
+  const setup = await ensureBundledRuntime({
+    payloadPaths: bundledPayloadPaths(process.resourcesPath, app.getAppPath()),
+    installDir: path.join(app.getPath("userData"), "wrapper-runtime"),
+    onProgress: (message: string) => mainLog.info(`wrapper setup: ${message}`),
+  });
+  if (!setup.ok || !setup.wrapperDir) {
+    mainLog.error(`lossless is unavailable: ${setup.detail}${setup.hint ? ` — ${setup.hint}` : ""}`);
+    return;
+  }
+  // The wrapper maps user ids and chroots, which needs root; fall back to the
+  // plain launch on hosts that allow unprivileged user namespaces.
+  const sudo = await passwordlessSudo();
+  activeWrapperCommand = buildBundledCommand({
+    wrapperDir: setup.wrapperDir,
+    decryptPort: portOf(decryptorAddress, 10020),
+    manifestPort: portOf(manifestAddress, 20020),
+    sudo,
+  });
+  wrapper.setCommand(activeWrapperCommand);
+  setAudioWrapperCommand(activeWrapperCommand);
+  const status = await wrapper.start();
+  mainLog.info(
+    `wrapper ${status.state}${status.detail ? ` (${status.detail})` : ""}${sudo ? "" : " [no sudo]"}`,
+  );
+}
+
 /**
  * Bring up the Windows lossless runtime: import the payload that ships with the
  * app into its own version 1 environment, then let the wrapper service start it
@@ -532,8 +594,15 @@ async function prepareWindowsWrapper(
     const candidate = Number.parseInt(address.slice(address.lastIndexOf(":") + 1), 10);
     return Number.isInteger(candidate) ? candidate : fallback;
   };
+  const payload = findBundledPayload(bundledPayloadPaths(process.resourcesPath, app.getAppPath()));
+  const packed = payload
+    ? await packPayloadForImport({
+        payload,
+        targetPath: path.join(app.getPath("userData"), "wrapper-payload.tar.gz"),
+      })
+    : null;
   const setup = await ensureWslRuntime({
-    archivePaths: runtimeArchiveCandidates(process.resourcesPath, app.getAppPath()),
+    archivePaths: packed ? [packed] : runtimeArchiveCandidates(process.resourcesPath, app.getAppPath()),
     onProgress: (message: string) => mainLog.info(`wrapper setup: ${message}`),
   });
   if (!setup.ok) {
@@ -711,8 +780,11 @@ function initAudioEngine(ses: Electron.Session): AudioEngine {
   // The package ships a Unix default for this field, so on Windows it is only
   // usable when it names something Windows can actually start.
   const windowsRuntime = process.platform === "win32" && !isWindowsWrapperCommand(configuredWrapperCommand);
+  // Linux and the BSDs can run the shipped payload directly; use it whenever the
+  // configured line points at a wrapper that is not installed.
+  const bundledRuntime = process.platform === "linux" && !configuredWrapperExists(configuredWrapperCommand);
   const wrapper = new WrapperService({
-    command: windowsRuntime ? "" : configuredWrapperCommand,
+    command: windowsRuntime || bundledRuntime ? "" : configuredWrapperCommand,
     decryptor: decryptorAddress,
     manifest: manifestAddress,
     // A Windows launch is `wsl … sh -c '…'`, so the login run rebuilds the whole
@@ -766,6 +838,10 @@ function initAudioEngine(ses: Electron.Session): AudioEngine {
   // runs inside a version 1 WSL environment (syscall translation, no VM).
   if (windowsRuntime) {
     void prepareWindowsWrapper(wrapper, decryptorAddress, manifestAddress).catch((error) =>
+      mainLog.error(`wrapper setup failed: ${errorMessage(error)}`),
+    );
+  } else if (bundledRuntime) {
+    void prepareBundledWrapper(wrapper, decryptorAddress, manifestAddress).catch((error) =>
       mainLog.error(`wrapper setup failed: ${errorMessage(error)}`),
     );
   }
@@ -869,7 +945,9 @@ function loadAssets(): Assets {
   const drmShimScript = drmShimEnabled
     ? fs
         .readFileSync(getAssetPath("assets", "lidraDrm.js"), "utf-8")
-        .replace("__LIDRA_EME__", "true")
+        // replaceAll: the flag is named in the file's own comment, and replacing
+        // only the first match substituted the comment instead of the check.
+        .replaceAll("__LIDRA_EME__", "true")
     : "";
   const qualityBadgeScript = fs.readFileSync(
     getAssetPath("assets", "qualityBadge.js"),
@@ -896,15 +974,23 @@ function loadAssets(): Assets {
  * the UI. Returns true when a cookie was written.
  */
 async function applyWrapperSession(ses: Electron.Session): Promise<boolean> {
-  const state = readWrapperSession(
-    wrapperBaseDir(activeWrapperCommand ?? getAudioWrapperCommand()),
-  );
-  if (!state) return false;
-  // Only fill in a missing session. A player that signed in through Apple's own
-  // form already has one, and rewriting the cookie would reload the page for no
-  // reason — visible flicker on an otherwise finished sign-in.
+  const baseDir = wrapperBaseDir(activeWrapperCommand ?? getAudioWrapperCommand());
+  const state = readWrapperSession(baseDir);
+  if (!state) {
+    mainLog.info(`wrapper session: nothing at ${baseDir ?? "(no command)"}`);
+    return false;
+  }
+  // Replace a stale value, and leave an identical one alone. Keeping whatever
+  // cookie was already there meant an expired session kept the player on
+  // previews even after the wrapper signed in successfully.
   const existing = await ses.cookies.get({ name: "media-user-token" });
-  if (existing.length > 0) return false;
+  if (existing.some((cookie) => cookie.value === state.mediaUserToken)) {
+    mainLog.info("wrapper session: player already carries it");
+    return false;
+  }
+  mainLog.info(
+    `wrapper session: adopting token ${state.mediaUserToken.slice(0, 8)}... (had ${existing.length})`,
+  );
   await ses.cookies.set({
     url: "https://music.apple.com/",
     name: "media-user-token",
