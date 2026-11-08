@@ -30,12 +30,16 @@ function fixture(): SettingsState {
   return {
     musicService: 'music', startPage: 'new', theme: 'apple-music', zoomFactor: 1,
     closeToTray: false, notifications: true, discord: false,
+    audioEnabled: true, audioQuality: 'hi-res', audioSpatial: 'binaural',
+    audioDevice: '/tmp/device.wvd', audioFfmpeg: '/usr/bin/ffmpeg',
     lastfm: { available: true, customEndpoint: false, connected: false, enabled: false, username: '' },
     options: {
       musicService: [{ value: 'music', label: 'Apple Music' }, { value: 'classical', label: 'Apple Music Classical' }],
       startPage: [{ value: 'new', label: 'New' }],
       theme: [{ value: 'apple-music', label: 'Apple Music' }],
       zoomFactor: [{ value: 1, label: '100%' }, { value: 1.25, label: '125%' }],
+      audioQuality: [{ value: 'auto', label: 'Automatic' }, { value: 'hi-res', label: 'Hi-res lossless' }],
+      audioSpatial: [{ value: 'bed', label: '5.1 bed' }, { value: 'binaural', label: 'Binaural spatial' }],
     },
     labels: getTrayStrings(), lang: 'en',
   };

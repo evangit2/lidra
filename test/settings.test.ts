@@ -154,4 +154,34 @@ describe('settings actions', () => {
     notifySettingsChanged();
     expect(listener).toHaveBeenCalledOnce();
   });
+
+  it('round-trips the audio settings and rejects unknown values', () => {
+    const state = getSettingsState();
+    expect(state.options.audioQuality.map((option) => option.value)).toEqual([
+      'auto',
+      'hi-res',
+      'lossless',
+      'atmos',
+      'dolby-audio',
+      'aac',
+    ]);
+    expect(state.options.audioSpatial.map((option) => option.value)).toEqual(['bed', 'binaural']);
+
+    applySettingsAction({ type: 'audioQuality', value: 'hi-res' });
+    expect(getSettingsState().audioQuality).toBe('hi-res');
+    applySettingsAction({ type: 'audioSpatial', value: 'binaural' });
+    expect(getSettingsState().audioSpatial).toBe('binaural');
+    applySettingsAction({ type: 'audioEnabled', value: false });
+    expect(getSettingsState().audioEnabled).toBe(false);
+
+    // Surrounding whitespace is trimmed, and clearing the field unsets it.
+    applySettingsAction({ type: 'audioDevice', value: '  /tmp/device.wvd  ' });
+    expect(getSettingsState().audioDevice).toBe('/tmp/device.wvd');
+    applySettingsAction({ type: 'audioDevice', value: '   ' });
+    expect(getSettingsState().audioDevice).toBe('');
+
+    expect(() => applySettingsAction({ type: 'audioQuality', value: 'ultra' })).toThrow();
+    expect(() => applySettingsAction({ type: 'audioSpatial', value: 'objects' })).toThrow();
+    expect(() => applySettingsAction({ type: 'audioDevice', value: 42 })).toThrow();
+  });
 });

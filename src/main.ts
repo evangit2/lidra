@@ -497,7 +497,7 @@ function initAudioEngine(ses: Electron.Session): AudioEngine {
       return quality === "auto" ? null : quality;
     },
     ffmpegPath: ffmpegPath ?? undefined,
-    spatial: getAudioSpatial(),
+    getSpatial: getAudioSpatial,
     decryptMode: getAudioDecryptorService().trim() ? "wrapper" : "key",
     decryptorService: getAudioDecryptorService(),
     manifestService: getAudioManifestService(),

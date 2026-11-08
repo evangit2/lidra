@@ -274,6 +274,22 @@ export interface TrayStrings {
   hideWindow: string;
   showWindow: string;
   closeToTray: string;
+  audio: string;
+  audioEnabled: string;
+  audioQuality: string;
+  audioSpatial: string;
+  audioDevice: string;
+  audioDeviceHint: string;
+  audioFfmpegReady: string;
+  audioFfmpegMissing: string;
+  qualityAuto: string;
+  qualityHiRes: string;
+  qualityLossless: string;
+  qualityAtmos: string;
+  qualityDolby: string;
+  qualityAac: string;
+  spatialBed: string;
+  spatialBinaural: string;
 }
 
 // Map each TrayStrings field to its translation record. The keyed Record makes
@@ -325,6 +341,24 @@ const TRAY_TEXT: Record<keyof TrayStrings, Record<string, string>> = {
   hideWindow: HIDE_WINDOW_TEXT,
   showWindow: SHOW_WINDOW_TEXT,
   closeToTray: CLOSE_TO_TRAY_TEXT,
+  audio: { en: 'Audio' },
+  audioEnabled: { en: 'Native lossless pipeline' },
+  audioQuality: { en: 'Quality' },
+  audioSpatial: { en: 'Atmos presentation' },
+  audioDevice: { en: 'CDM device' },
+  audioDeviceHint: {
+    en: 'Path to a .wvd file, or a folder with client_id.bin and private_key.pem. Takes effect after restarting Lidra.',
+  },
+  audioFfmpegReady: { en: 'ffmpeg: ready' },
+  audioFfmpegMissing: { en: 'ffmpeg: missing — lossless and Dolby cannot play' },
+  qualityAuto: { en: 'Automatic (best available)' },
+  qualityHiRes: { en: 'Hi-res lossless' },
+  qualityLossless: { en: 'Lossless' },
+  qualityAtmos: { en: 'Dolby Atmos' },
+  qualityDolby: { en: 'Dolby Audio' },
+  qualityAac: { en: 'AAC' },
+  spatialBed: { en: '5.1 bed (best fidelity)' },
+  spatialBinaural: { en: 'Binaural spatial (stereo)' },
 };
 
 // TRAY_TEXT is a Record literal, so excess property checking already rules out

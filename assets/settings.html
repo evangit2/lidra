@@ -20,6 +20,17 @@
           <div class="row"><label for="startPage" data-label="startPage"></label><select id="startPage"></select></div>
         </div>
       </section>
+      <section aria-labelledby="audio-heading">
+        <h2 id="audio-heading" data-label="audio"></h2>
+        <div class="group">
+          <label class="row toggle" for="audioEnabled"><span data-label="audioEnabled"></span><input id="audioEnabled" type="checkbox"></label>
+          <div class="row"><label for="audioQuality" data-label="audioQuality"></label><select id="audioQuality"></select></div>
+          <div class="row"><label for="audioSpatial" data-label="audioSpatial"></label><select id="audioSpatial"></select></div>
+          <div class="row"><label for="audioDevice" data-label="audioDevice"></label><input id="audioDevice" type="text" spellcheck="false" autocomplete="off"></div>
+          <p id="audio-hint" data-label="audioDeviceHint"></p>
+          <p id="audio-ffmpeg" role="status"></p>
+        </div>
+      </section>
       <section aria-labelledby="style-heading">
         <h2 id="style-heading" data-label="style"></h2>
         <div class="group">

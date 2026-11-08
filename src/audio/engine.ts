@@ -39,8 +39,8 @@ export interface AudioEngineOptions {
   decryptMode?: "key" | "wrapper";
   decryptorService?: string;
   manifestService?: string;
-  /** How Atmos is presented: the 5.1 bed, or Apple's binaural render. */
-  spatial?: SpatialMode;
+  /** How Atmos is presented; read per track so a settings change applies. */
+  getSpatial?: () => SpatialMode;
   /** Called with a snapshot whenever a pipeline changes state. */
   onStateChange?: (snapshot: ReturnType<TrackPipeline["snapshot"]>) => void;
 }
@@ -180,7 +180,7 @@ export class AudioEngine {
         decryptMode: this.options.decryptMode,
         decryptorService: this.options.decryptorService,
         manifestService: this.options.manifestService,
-        spatial: this.options.spatial,
+        spatial: this.options.getSpatial?.() ?? "bed",
       });
       try {
         const prepared = await pipeline.prepare();

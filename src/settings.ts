@@ -13,6 +13,9 @@ import {
 } from "./musicService";
 import { BUNDLED_THEMES, type ThemeName } from "./palettes";
 import { applyTheme, hasCustomTheme, resolveTheme } from "./theme";
+import type { SpatialMode } from "./audio/hls";
+import type { AudioQualityPreference } from "./config";
+import { findFfmpeg } from "./audio/transcode";
 import {
   enable as enableDiscord,
   disable as disableDiscord,
@@ -36,6 +39,10 @@ export type SettingsAction =
       type: "closeToTray" | "notifications" | "discord" | "lastfmEnabled";
       value: boolean;
     }
+  | { type: "audioEnabled"; value: boolean }
+  | { type: "audioQuality"; value: AudioQualityPreference | "auto" }
+  | { type: "audioSpatial"; value: SpatialMode }
+  | { type: "audioDevice"; value: string }
   | { type: "lastfmConnect" | "lastfmDisconnect" };
 
 /** A stored option value paired with its display label. */
@@ -52,6 +59,12 @@ export interface SettingsState {
   closeToTray: boolean;
   notifications: boolean;
   discord: boolean;
+  audioEnabled: boolean;
+  audioQuality: AudioQualityPreference | "auto";
+  audioSpatial: SpatialMode;
+  audioDevice: string;
+  /** Resolved ffmpeg path, or null when none is available. */
+  audioFfmpeg: string | null;
   lastfm: {
     available: boolean;
     customEndpoint: boolean;
@@ -64,6 +77,8 @@ export interface SettingsState {
     startPage: SettingsOption<AnyStartPageId | "last">[];
     theme: SettingsOption<ThemeName>[];
     zoomFactor: SettingsOption<ZoomFactor>[];
+    audioQuality: SettingsOption<AudioQualityPreference | "auto">[];
+    audioSpatial: SettingsOption<SpatialMode>[];
   };
   labels: TrayStrings;
   lang: string;
@@ -153,6 +168,11 @@ export function getSettingsState(): SettingsState {
     closeToTray: config.getCloseToTrayEnabled(),
     notifications: config.getNotificationsEnabled(),
     discord: config.getDiscordEnabled(),
+    audioEnabled: config.getAudioEnabled(),
+    audioQuality: config.getAudioQuality(),
+    audioSpatial: config.getAudioSpatial(),
+    audioDevice: config.getAudioWidevineDevice() ?? "",
+    audioFfmpeg: findFfmpeg(config.getAudioFfmpegPath() ?? undefined),
     lastfm: {
       available: lastfm.isConfigured(),
       customEndpoint: lastfm.isCustomEndpoint(),
@@ -167,6 +187,18 @@ export function getSettingsState(): SettingsState {
       })),
       startPage: pages.map((value) => ({ value, label: pageLabels[value] })),
       theme: themes,
+      audioQuality: [
+        { value: "auto", label: labels.qualityAuto },
+        { value: "hi-res", label: labels.qualityHiRes },
+        { value: "lossless", label: labels.qualityLossless },
+        { value: "atmos", label: labels.qualityAtmos },
+        { value: "dolby-audio", label: labels.qualityDolby },
+        { value: "aac", label: labels.qualityAac },
+      ],
+      audioSpatial: [
+        { value: "bed", label: labels.spatialBed },
+        { value: "binaural", label: labels.spatialBinaural },
+      ],
       zoomFactor: [
         { value: 1, label: labels.zoom100 },
         { value: 1.25, label: labels.zoom125 },
@@ -235,6 +267,18 @@ function isSettingsAction(
     case "notifications":
     case "discord":
       return typeof data.value === "boolean";
+    case "audioEnabled":
+      return typeof data.value === "boolean";
+    case "audioQuality":
+      return state.options.audioQuality.some(
+        (option) => option.value === data.value,
+      );
+    case "audioSpatial":
+      return state.options.audioSpatial.some(
+        (option) => option.value === data.value,
+      );
+    case "audioDevice":
+      return typeof data.value === "string" && data.value.length <= 4096;
     case "lastfmEnabled":
       return (
         state.lastfm.available &&
@@ -284,6 +328,18 @@ export function applySettingsAction(action: unknown): SettingsState {
     }
     case "notifications":
       config.setNotificationsEnabled(action.value);
+      break;
+    case "audioEnabled":
+      config.setAudioEnabled(action.value);
+      break;
+    case "audioQuality":
+      config.setAudioQuality(action.value);
+      break;
+    case "audioSpatial":
+      config.setAudioSpatial(action.value);
+      break;
+    case "audioDevice":
+      config.setAudioWidevineDevice(action.value.trim() ? action.value.trim() : null);
       break;
     case "discord":
       config.setDiscordEnabled(action.value);

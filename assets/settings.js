@@ -10,8 +10,8 @@
   document.documentElement.dir = /^(ar|he)(-|$)/i.test(lang) ? 'rtl' : 'ltr';
   document.title = params.get('settings') || 'Settings';
   document.querySelector('[data-label="settings"]').textContent = document.title;
-  const selects = ['musicService', 'startPage', 'theme', 'zoomFactor'];
-  const toggles = ['closeToTray', 'notifications', 'discord', 'lastfmEnabled'];
+  const selects = ['musicService', 'startPage', 'theme', 'zoomFactor', 'audioQuality', 'audioSpatial'];
+  const toggles = ['closeToTray', 'notifications', 'discord', 'lastfmEnabled', 'audioEnabled'];
   let state;
   // Pushed state supersedes pending replies from getState() and apply().
   let revision = 0;
@@ -62,6 +62,11 @@
     byId('lastfmDisconnect').hidden = state.lastfm.customEndpoint || !state.lastfm.connected;
     if (state.lastfm.available && focusedId === 'lastfmConnect' && state.lastfm.connected) byId('lastfmDisconnect').focus();
     if (state.lastfm.available && focusedId === 'lastfmDisconnect' && !state.lastfm.connected) byId('lastfmConnect').focus();
+    const device = byId('audioDevice');
+    if (document.activeElement !== device) device.value = state.audioDevice;
+    byId('audio-ffmpeg').textContent = state.audioFfmpeg
+      ? `${state.labels.audioFfmpegReady} — ${state.audioFfmpeg}`
+      : state.labels.audioFfmpegMissing;
     byId('preferences').hidden = false;
   }
 
@@ -97,6 +102,9 @@
   for (const key of toggles) {
     byId(key).addEventListener('change', () => apply({ type: key, value: byId(key).checked }));
   }
+  byId('audioDevice').addEventListener('change', () =>
+    apply({ type: 'audioDevice', value: byId('audioDevice').value }),
+  );
   for (const key of ['lastfmConnect', 'lastfmDisconnect']) {
     byId(key).addEventListener('click', () => apply({ type: key }));
   }
