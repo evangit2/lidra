@@ -916,6 +916,12 @@ async function forwardAuthToWrapper(email: string, password: string, code?: stri
     mainLog.info("wrapper: signing in with the credentials from the Apple sign-in form");
     const status = await wrapperService.startWithLogin(email, password);
     mainLog.info(`wrapper sign-in ${status.state}${status.detail ? ` (${status.detail})` : ""}`);
+    if (status.state !== "running") {
+      // The run did not come up (wrong password, or Apple asked for a code), so a
+      // later capture may retry instead of being swallowed by the latch. The
+      // credentials stay pending for a retry that carries the code.
+      wrapperSignInStarted = false;
+    }
   } catch (error) {
     mainLog.warn(`wrapper sign-in failed: ${errorMessage(error)}`);
     wrapperSignInStarted = false;
@@ -944,7 +950,7 @@ function handleAuthCapture(isCreds: boolean, value: unknown): void {
         if (pendingAuth && !wrapperSignInStarted) {
           void forwardAuthToWrapper(pendingAuth.email, pendingAuth.password);
         }
-      }, 25_000);
+      }, 3_500);
     }
     return;
   }
@@ -1020,7 +1026,7 @@ function setupAuthFrameInjection(win: BrowserWindow, script: string): void {
           /* frame navigated away */
         });
     }
-  }, 1_200);
+  }, 250);
   win.on("closed", () => clearInterval(capturePoll));
 
   win.webContents.on("console-message", (event) => {

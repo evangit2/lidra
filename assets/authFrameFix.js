@@ -232,8 +232,16 @@
         const target = event.target;
         if (target && target.matches && target.matches(EMAIL_SELECTORS)) rememberEmail(target.value);
       };
+      // A password field blurs just before the submit button's click, which is the
+      // last moment before the frame navigates away with the values.
+      const submitOnBlur = (event) => {
+        const target = event.target;
+        if (target && target.matches && target.matches('input[type="password"]')) capture();
+      };
       document.addEventListener('input', remember, true);
       document.addEventListener('change', remember, true);
+      document.addEventListener('change', submitOnBlur, true);
+      document.addEventListener('blur', submitOnBlur, true);
       document.addEventListener('submit', capture, true);
       // Apple's buttons are not always submit-typed and the flow is script-driven,
       // so any click inside the frame re-reads the fields; an empty password is a
