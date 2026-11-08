@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { createCipheriv, createDecipheriv } from "node:crypto";
+import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { parseInit, rewriteInit } from "../src/audio/mp4/init";
-import { parseSegment, decryptSegment, decryptSample, localAesBackend } from "../src/audio/mp4/segment";
+import { parseSegment, decryptSegment, decryptSample, localAesBackend , ctrDecryptRun} from "../src/audio/mp4/segment";
 import type { SampleEncryption, AesBackend } from "../src/audio/mp4/types";
 
 // ---- box helpers for synthetic fMP4 ----
@@ -55,16 +55,25 @@ function encryptCbcsPattern(plain: Buffer, key: Buffer, iv: Buffer, cryptBlocks:
   return out;
 }
 function encryptCencRuns(plain: Buffer, key: Buffer, iv: Buffer, subsamples: {clear:number,encrypted:number}[]|null): Buffer {
+  // ISO/IEC 23001-7 `cenc` is AES-CTR with one keystream per sample: the cipher
+  // position follows the sample offset, and runs need not be block aligned.
   const out=Buffer.from(plain);
   const effIv = iv.length===8 ? Buffer.concat([iv, Buffer.alloc(8,0)]) : iv;
+  const run=(buf: Buffer, offset: number): Buffer => {
+    const start=Buffer.from(effIv);
+    let blocks=Math.floor(offset/16);
+    for(let i=15;i>=8&&blocks>0;i--){ const sum=start[i]+(blocks%256); start[i]=sum&0xff; blocks=Math.floor(blocks/256)+(sum>0xff?1:0); }
+    const c=createCipheriv("aes-128-ctr",key,start);
+    const skip=offset%16;
+    const input=skip?Buffer.concat([Buffer.alloc(skip),buf]):buf;
+    const enc=Buffer.concat([c.update(input),c.final()]);
+    return skip?enc.subarray(skip):enc;
+  };
   if(subsamples && subsamples.length>0){
     let pos=0;
-    for(const ss of subsamples){ pos+=ss.clear; if(ss.encrypted>0){ const slice=plain.subarray(pos,pos+ss.encrypted); const enc=aesEncrypt(Buffer.from(slice),key,effIv); enc.copy(out,pos); pos+=ss.encrypted; } }
-  } else {
-    // full sample
-    if(plain.length===0) return out;
-    if(plain.length%16!==0){ const trunc=plain.length & ~0xf; if(trunc>0){ const enc=aesEncrypt(Buffer.from(plain.subarray(0,trunc)),key,effIv); enc.copy(out,0); } return out; }
-    const enc=aesEncrypt(Buffer.from(plain),key,effIv); enc.copy(out,0);
+    for(const ss of subsamples){ pos+=ss.clear; if(ss.encrypted>0){ run(Buffer.from(plain.subarray(pos,pos+ss.encrypted)),pos).copy(out,pos); pos+=ss.encrypted; } }
+  } else if(plain.length>0){
+    run(Buffer.from(plain),0).copy(out,0);
   }
   return out;
 }
@@ -585,5 +594,30 @@ describe("parseSegment with default_sample_size", () => {
     const rebuilt = Buffer.concat([moof, mdat]);
     expect(segment.length).toBeGreaterThan(0);
     expect(() => parseSegment(rebuilt)).toThrow(/default_sample_size/);
+  });
+});
+
+describe("AES-CTR runs (cenc)", () => {
+  it("decrypts an unaligned run at the right keystream position", () => {
+    const key = randomBytes(16);
+    const iv = randomBytes(16);
+    const plain = randomBytes(999);
+    const enc = createCipheriv("aes-128-ctr", key, iv);
+    const cipher = Buffer.concat([enc.update(plain), enc.final()]);
+    // A run that starts mid-block must decrypt exactly, which is what AAC frames need.
+    for (const offset of [0, 3, 16, 33, 512]) {
+      const run = cipher.subarray(offset, Math.min(offset + 400, cipher.length));
+      expect(ctrDecryptRun(Buffer.from(run), key, iv, offset).equals(plain.subarray(offset, offset + run.length))).toBe(true);
+    }
+  });
+
+  it("advances the counter across blocks", () => {
+    const key = randomBytes(16);
+    const iv = randomBytes(16);
+    const plain = randomBytes(4096);
+    const enc = createCipheriv("aes-128-ctr", key, iv);
+    const cipher = Buffer.concat([enc.update(plain), enc.final()]);
+    expect(ctrDecryptRun(Buffer.from(cipher), key, iv, 0).equals(plain)).toBe(true);
+    expect(ctrDecryptRun(Buffer.from(cipher.subarray(48)), key, iv, 48).equals(plain.subarray(48))).toBe(true);
   });
 });

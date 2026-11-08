@@ -199,6 +199,29 @@ PSSH ──► SignedMessage(LicenseRequest)  signed with the device RSA key
 The CDM is a device credential, not a secret Lidra ships or derives; a licence
 issued through it is scoped to the subscriber who signed in.
 
+### Web-playback fallback (Widevine, 256 kbps)
+
+Every lossless and Atmos rendition is FairPlay-only, so a Widevine device alone
+cannot open them. Apple's older `webPlayback` endpoint still serves one rendition
+keyed with Widevine — flavour `28:ctrp256`, AAC 256 — so when the chosen
+rendition declares `skd://` and a device is configured, the pipeline switches to
+that asset instead of failing at the first segment.
+
+```
+enhancedHls master ──► best variant ──► key URI skd:// ? ──► webPlayback
+                                                             28:ctrp256
+                                       └── else: stream the chosen variant
+```
+
+Measured on a 9:08 track with a real device: prepared in 545 ms, first playable
+segment at 1.15 s, whole track decrypted in 2.7 s. The playlist ffmpeg writes is
+`#EXT-X-ELIST`-style `event`, so playback starts on the first segment rather than
+waiting for the download to finish.
+
+`cenc` (AES-CTR) streams decrypt with the keystream positioned per sample, which
+is why unaligned AAC frames decrypt correctly; `cbcs` keeps its block-aligned
+path. Without a device or wrapper the track still fails, and the UI says so.
+
 ### Key service (`LIDRA_KEY_SERVICE`, `LIDRA_KEY_TRANSPORT`)
 
 Newline-delimited JSON over TCP, a Unix socket, or HTTP POST:

@@ -20,7 +20,38 @@ export function localAesBackend(key: Buffer): AesBackend {
       decipher.setAutoPadding(false);
       return Buffer.concat([decipher.update(data), decipher.final()]);
     },
+    decryptCtr(data: Buffer, iv: Buffer, offset: number): Buffer {
+      return ctrDecryptRun(data, key, iv, offset);
+    },
   };
+}
+
+/**
+ * AES-CTR decryption of a run that starts `offset` bytes into the sample.
+ *
+ * `cenc` keeps one keystream per sample, so the cipher position follows the
+ * sample offset: advance the counter by whole blocks and discard the remainder
+ * of the block's keystream. Runs do not have to be block aligned — AAC frames
+ * are not — which is why the CBC backend cannot be used here.
+ */
+export function ctrDecryptRun(run: Buffer, key: Buffer, iv: Buffer, offset: number): Buffer {
+  if (run.length === 0) return Buffer.alloc(0);
+  if (!Buffer.isBuffer(key) || key.length !== 16) throw new Error("CTR key must be 16 bytes");
+  if (!Buffer.isBuffer(iv) || iv.length !== 16) throw new Error("CTR IV must be 16 bytes");
+
+  const skip = offset % 16;
+  const start = Buffer.from(iv);
+  let blocks = Math.floor(offset / 16);
+  for (let index = 15; index >= 8 && blocks > 0; index -= 1) {
+    const sum = start[index] + (blocks % 256);
+    start[index] = sum & 0xff;
+    blocks = Math.floor(blocks / 256) + (sum > 0xff ? 1 : 0);
+  }
+
+  const decipher = createDecipheriv("aes-128-ctr", key, start);
+  const input = skip > 0 ? Buffer.concat([Buffer.alloc(skip), run]) : run;
+  const plain = Buffer.concat([decipher.update(input), decipher.final()]);
+  return skip > 0 ? plain.subarray(skip) : plain;
 }
 
 function isAesBackend(v: unknown): v is AesBackend {
@@ -149,6 +180,9 @@ export function decryptSample(
     }
   } else {
     const ivForRuns = effectiveIv!;
+    // `cenc` is AES-CTR: use the keystream directly so unaligned runs work.
+    const ctr =
+      typeof backend.decryptCtr === "function" ? backend.decryptCtr.bind(backend) : null;
     if (subsamples && subsamples.length > 0) {
       let pos = 0;
       for (const ss of subsamples) {
@@ -156,10 +190,14 @@ export function decryptSample(
         if (ss.encrypted > 0) {
           if (pos + ss.encrypted > out.length) throw new Error("subsample exceeds buffer");
           const slice = out.subarray(pos, pos + ss.encrypted);
+          if (ctr) {
+            ctr(Buffer.from(slice), ivForRuns, pos).copy(out, pos);
+            pos += ss.encrypted;
+            continue;
+          }
           if (slice.length % 16 !== 0) {
             throw new Error("encrypted run not block aligned");
           }
-          if (slice.length === 0) { pos += ss.encrypted; continue; }
           const dec = backend.decrypt(Buffer.from(slice), ivForRuns);
           dec.copy(out, pos);
           pos += ss.encrypted;
@@ -167,7 +205,9 @@ export function decryptSample(
       }
     } else {
       if (out.length === 0) return out;
-      if (out.length % 16 !== 0) {
+      if (ctr) {
+        ctr(Buffer.from(out), ivForRuns, 0).copy(out, 0);
+      } else if (out.length % 16 !== 0) {
         const trunc = out.length & ~0xf;
         if (trunc > 0) {
           const dec = backend.decrypt(Buffer.from(out.subarray(0, trunc)), ivForRuns);

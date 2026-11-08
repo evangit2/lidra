@@ -39,6 +39,8 @@ export interface AudioEngineOptions {
   decryptMode?: "key" | "wrapper";
   decryptorService?: string;
   manifestService?: string;
+  /** Resolver for the Widevine-keyed web-playback asset (FairPlay fallback). */
+  webPlayback?: (adamId: string) => Promise<{ text: string; baseUrl: string } | null>;
   /** How Atmos is presented; read per track so a settings change applies. */
   getSpatial?: () => SpatialMode;
   /** Called with a snapshot whenever a pipeline changes state. */
@@ -180,6 +182,7 @@ export class AudioEngine {
         decryptMode: this.options.decryptMode,
         decryptorService: this.options.decryptorService,
         manifestService: this.options.manifestService,
+        webPlayback: this.options.webPlayback,
         spatial: this.options.getSpatial?.() ?? "bed",
       });
       try {

@@ -75,6 +75,7 @@ import { AudioEngine } from "./audio/engine";
 import { CredentialStore } from "./audio/tokens";
 import { KeyCache, createKeyProvider } from "./audio/keys";
 import { createWidevineProvider } from "./audio/widevine/provider";
+import { webPlaybackMaster } from "./audio/webplayback";
 import { initAudioBridge } from "./audio/bridge";
 import { findFfmpeg } from "./audio/transcode";
 import {
@@ -501,6 +502,21 @@ function initAudioEngine(ses: Electron.Session): AudioEngine {
     decryptMode: getAudioDecryptorService().trim() ? "wrapper" : "key",
     decryptorService: getAudioDecryptorService(),
     manifestService: getAudioManifestService(),
+    // Only meaningful with a Widevine device: Apple's lossless renditions are
+    // FairPlay, so the keyed fallback is the 256 kbps web-playback asset.
+    webPlayback: widevine
+      ? (adamId: string) => {
+          const snapshot = credentials.snapshot();
+          if (!snapshot.developerToken || !snapshot.mediaUserToken) return Promise.resolve(null);
+          return webPlaybackMaster(
+            adamId,
+            {
+              developerToken: snapshot.developerToken,
+              mediaUserToken: snapshot.mediaUserToken,
+            },
+          );
+        }
+      : undefined,
     onStateChange: (snapshot) => {
       mainLog.info(
         `audio ${snapshot.state} ${snapshot.asset.name}` +

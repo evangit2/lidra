@@ -20,7 +20,8 @@ const { resolveSong } = require(path.join(dist, "audio", "catalog.js"));
 const { KeyCache } = require(path.join(dist, "audio", "keys.js"));
 const { createWidevineProvider } = require(path.join(dist, "audio", "widevine", "provider.js"));
 const { TrackPipeline } = require(path.join(dist, "audio", "pipeline.js"));
-const { parseInitSegment } = require(path.join(dist, "audio", "mp4", "init.js"));
+const { webPlaybackMaster } = require(path.join(dist, "audio", "webplayback.js"));
+const { parseInit } = require(path.join(dist, "audio", "mp4", "init.js"));
 
 app.setName("Lidra");
 app.setPath("userData", path.join(os.homedir(), ".config", "Lidra"));
@@ -73,6 +74,7 @@ async function main() {
     cacheRoot,
     ffmpegPath: require("ffmpeg-static"),
     spatial: "bed",
+    webPlayback: (adamId) => webPlaybackMaster(adamId, credentials),
   });
 
   const prepared = await pipeline.prepare();
@@ -91,7 +93,7 @@ async function main() {
   console.log(`FILES ${files.length}: ${files.slice(0, 6).join(", ")}${files.length > 6 ? " …" : ""}`);
   const init = path.join(dir, "init.mp4");
   if (fs.existsSync(init)) {
-    const info = parseInitSegment(fs.readFileSync(init));
+    const info = parseInit(fs.readFileSync(init));
     console.log(`INIT track=${JSON.stringify(info.trackId ?? null)} ok`);
   }
   app.exit(snap.state === "complete" ? 0 : 1);

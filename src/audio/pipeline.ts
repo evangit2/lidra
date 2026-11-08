@@ -58,6 +58,11 @@ export interface PipelineOptions {
   manifestService?: string;
   /** How Atmos should be presented: the 5.1 bed or Apple's binaural render. */
   spatial?: SpatialMode;
+  /**
+   * Resolver for the Widevine-keyed web-playback asset. Used when the chosen
+   * rendition is FairPlay-only, which every lossless and Atmos rendition is.
+   */
+  webPlayback?: (adamId: string) => Promise<{ text: string; baseUrl: string } | null>;
 }
 
 export interface PipelineSnapshot {
@@ -203,8 +208,31 @@ export class TrackPipeline {
     if (variants.length === 0) {
       throw new Error("manifest listed no audio renditions");
     }
-    const variant = selectVariant(variants, this.preference, { spatial: this.spatial });
+    let variant = selectVariant(variants, this.preference, { spatial: this.spatial });
     if (!variant) throw new Error("no rendition matched the quality preference");
+
+    // Lossless and Atmos renditions are FairPlay-only. A wrapper decrypts those;
+    // without one the only key Apple offers a web session is Widevine on the
+    // 256 kbps web-playback asset, so fall back to it rather than fail at the
+    // first segment.
+    if (this.options.decryptMode !== "wrapper" && this.options.webPlayback) {
+      const keyUri = await this.firstKeyUri(variant);
+      if (keyUri.startsWith("skd://")) {
+        const fallback = await this.options.webPlayback(this.asset.id).catch(() => null);
+        if (fallback) {
+          const fallbackVariants = rankVariants(
+            parseMasterPlaylist(fallback.text, fallback.baseUrl),
+          );
+          const picked = selectVariant(fallbackVariants, this.preference, { spatial: this.spatial });
+          if (picked) {
+            pipelineLog.info(
+              `${this.asset.name}: ${variant.label} is FairPlay-only; using ${picked.label} with a Widevine key`,
+            );
+            variant = picked;
+          }
+        }
+      }
+    }
     this.variant = variant;
 
     this.transcoder = createTranscoder({
@@ -216,6 +244,19 @@ export class TrackPipeline {
 
     this.running = this.pump(variant);
     return { directory: this.directory, mount: this.mount, variant };
+  }
+
+  /** The key URI the rendition's media playlist declares, if any. */
+  private async firstKeyUri(variant: AudioVariant): Promise<string> {
+    try {
+      const playlist = parseMediaPlaylist(await fetchText(variant.uri), variant.uri);
+      return playlist.segments[0]?.key?.uri ?? "";
+    } catch (error) {
+      pipelineLog.warn(
+        `could not read the key URI for ${variant.label}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return "";
+    }
   }
 
   /** Wait for the current download to finish (or fail). */
