@@ -91,7 +91,9 @@ export class LegacyDecryptor {
   /** Arm the service for one (song, key URI) pair. */
   private async arm(request: LegacyRequest): Promise<void> {
     const socket = await this.connect();
-    socket.write(Buffer.from([0, 0, 0, 0]));
+    // SwitchKeys (four zero bytes) only separates one key from the next; sending it
+    // before the first arm makes the service drop the connection.
+    if (this.armed) socket.write(Buffer.from([0, 0, 0, 0]));
     LegacyDecryptor.sendString(socket, request.adamId);
     LegacyDecryptor.sendString(socket, request.keyUri);
     await this.drain();

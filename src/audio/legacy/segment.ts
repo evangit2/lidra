@@ -120,6 +120,11 @@ export function sampleLayout(segment: Buffer, perSampleIvSize = 8): SampleLayout
       // Per-sample IVs, when present, line up with the sample order.
       let sencCursor = senc ? senc.payload + 4 : 0;
       const sencFlags = senc ? readFullBoxFlags(segment, senc.payload) : 0;
+      // Apple's senc repeats the sample count before the entries; the ISO layout
+      // does not. Trust the value only when it matches, so both parse correctly.
+      if (senc && sencCursor + 4 <= segment.length && segment.readUInt32BE(sencCursor) === sampleCount) {
+        sencCursor += 4;
+      }
 
       let offset = baseDataOffset + dataOffset;
       for (let index = 0; index < sampleCount; index += 1) {
