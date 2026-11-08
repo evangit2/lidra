@@ -240,6 +240,18 @@ jobs:
       - name: Install snapcraft
         if: matrix.os == 'linux' && github.event_name != 'pull_request'
         run: sudo snap install snapcraft --classic
+      # The FairPlay client Lidra runs on Windows lives in a separate payload
+      # release: it is Apple's binary, so it stays out of the source tree.
+      - name: Fetch the Windows wrapper payload
+        if: matrix.os == 'windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/wrapper-payload
+          base="https://github.com/${GITHUB_REPOSITORY}/releases/download/wrapper-payload-1.0.0"
+          curl -fsSL --retry 3 -o build/wrapper-payload/wrapper-rootfs.tar.gz "$base/wrapper-rootfs.tar.gz"
+          tar tzf build/wrapper-payload/wrapper-rootfs.tar.gz > /dev/null
+          ls -la build/wrapper-payload
       - name: Compile TypeScript
         run: npm run build
         env:

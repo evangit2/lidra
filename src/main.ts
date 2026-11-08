@@ -81,6 +81,7 @@ import { KeyCache, createKeyProvider } from "./audio/keys";
 import { createWidevineProvider } from "./audio/widevine/provider";
 import { webPlaybackMaster } from "./audio/webplayback";
 import { WrapperService, isListening } from "./audio/wrapper/service";
+import { buildWslCommand, ensureWslRuntime, payloadCandidates } from "./audio/wrapper/wsl";
 import { readWrapperSession, wrapperBaseDir } from "./audio/wrapper/session";
 import { dismissTwoFactorPrompt, showTwoFactorPrompt } from "./twoFactorWindow";
 import { initAudioBridge } from "./audio/bridge";
@@ -506,6 +507,45 @@ function expandWrapperCommand(command: string): string {
   return command.replace(/^~(?=$|\/)/, home).replace(/\$\{?HOME\}?/g, home);
 }
 
+/**
+ * Bring up the Windows lossless runtime: import the payload that ships with the
+ * app into its own version 1 environment, then let the wrapper service start it
+ * like any other host. Every failure is logged with the action it needs.
+ */
+async function prepareWindowsWrapper(
+  wrapper: WrapperService,
+  decryptorAddress: string,
+  manifestAddress: string,
+): Promise<void> {
+  const portOf = (address: string, fallback: number): number => {
+    const candidate = Number.parseInt(address.slice(address.lastIndexOf(":") + 1), 10);
+    return Number.isInteger(candidate) ? candidate : fallback;
+  };
+  const setup = await ensureWslRuntime({
+    payloadPaths: payloadCandidates(process.resourcesPath, app.getAppPath()),
+    onProgress: (message: string) => mainLog.info(`wrapper setup: ${message}`),
+  });
+  if (!setup.ok) {
+    mainLog.error(
+      `lossless on Windows is unavailable: ${setup.detail}` + (setup.hint ? ` — ${setup.hint}` : ""),
+    );
+    publishQuality({
+      label: `lossless needs the Windows subsystem: ${setup.detail}`,
+      verdict: "mismatch",
+    });
+    return;
+  }
+  mainLog.info(`wrapper setup: ${setup.detail}`);
+  wrapper.setCommand(
+    buildWslCommand({
+      decryptPort: portOf(decryptorAddress, 10020),
+      manifestPort: portOf(manifestAddress, 20020),
+    }),
+  );
+  const status = await wrapper.start();
+  mainLog.info(`wrapper ${status.state}${status.detail ? ` (${status.detail})` : ""}`);
+}
+
 function initAudioEngine(ses: Electron.Session): AudioEngine {
   const credentials = new CredentialStore(ses);
   // Header capture only sees requests the page has already sent, and the web
@@ -641,10 +681,28 @@ function initAudioEngine(ses: Electron.Session): AudioEngine {
 
   // FairPlay wrapper: the only route to lossless and Atmos. Lidra owns its
   // lifecycle, so the user does not have to start a service by hand.
+  const decryptorAddress = getAudioDecryptorService() || "127.0.0.1:10020";
+  const manifestAddress = getAudioManifestService() || "127.0.0.1:20020";
+  const portOf = (address: string, fallback: number): number => {
+    const candidate = Number.parseInt(address.slice(address.lastIndexOf(":") + 1), 10);
+    return Number.isInteger(candidate) ? candidate : fallback;
+  };
+  const configuredWrapperCommand = expandWrapperCommand(getAudioWrapperCommand());
   const wrapper = new WrapperService({
-    command: expandWrapperCommand(getAudioWrapperCommand()),
-    decryptor: getAudioDecryptorService() || "127.0.0.1:10020",
-    manifest: getAudioManifestService() || "127.0.0.1:20020",
+    command: configuredWrapperCommand,
+    decryptor: decryptorAddress,
+    manifest: manifestAddress,
+    // A Windows launch is `wsl … sh -c '…'`, so the login run rebuilds the whole
+    // line instead of appending arguments after the closing quote.
+    composeLogin:
+      process.platform === "win32"
+        ? (_base, credentials) =>
+            buildWslCommand({
+              decryptPort: portOf(decryptorAddress, 10020),
+              manifestPort: portOf(manifestAddress, 20020),
+              extra: ["-L", credentials, "-F"],
+            })
+        : undefined,
     // Apple sends the code to the user's devices, and the wrapper can only take
     // it as a file, so ask for it right here instead of making the user hunt for
     // a settings field while a login sits waiting.
@@ -681,6 +739,13 @@ function initAudioEngine(ses: Electron.Session): AudioEngine {
     },
   });
   wrapperService = wrapper;
+  // Windows has no FairPlay client of its own: the wrapper ships with Lidra and
+  // runs inside a version 1 WSL environment (syscall translation, no VM).
+  if (process.platform === "win32" && !configuredWrapperCommand.trim()) {
+    void prepareWindowsWrapper(wrapper, decryptorAddress, manifestAddress).catch((error) =>
+      mainLog.error(`wrapper setup failed: ${errorMessage(error)}`),
+    );
+  }
   // Adopt or sign in shortly after launch so the first lossless play is warm.
   setTimeout(() => {
     void restoreWrapperLogin().catch((error) =>

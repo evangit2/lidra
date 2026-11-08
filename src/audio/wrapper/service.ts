@@ -38,6 +38,12 @@ export interface WrapperServiceOptions {
   manifest: string;
   /** Spawn implementation, injectable for tests. */
   spawnImpl?: typeof spawn;
+  /**
+   * Build the one-shot login line. A plain command appends `-L …`, but a
+   * Windows launch wraps everything in `wsl … sh -c '…'`, where appended
+   * arguments would land outside the script.
+   */
+  composeLogin?: (base: string, credentials: string) => string;
   /** TCP probe, injectable for tests. */
   probe?: (address: string) => Promise<boolean>;
   /** Called whenever the state changes. */
@@ -286,9 +292,17 @@ export class WrapperService {
    * cached app session is what FairPlay keys are issued against — a web
    * media-user-token cannot stand in for it.
    */
+  /** Replace the launch line, e.g. once the Windows runtime has been prepared. */
+  setCommand(command: string): void {
+    this.options.command = command;
+    if (this.state !== "running") this.detail = "";
+  }
+
   async startWithLogin(email: string, password: string): Promise<WrapperStatus> {
     const quote = (value: string): string => `'${value.replace(/'/g, `'\\''`)}'`;
-    const loginCommand = `${this.options.command} -L ${quote(`${email}:${password}`)} -F`;
+    const loginCommand = this.options.composeLogin
+      ? this.options.composeLogin(this.options.command, `${email}:${password}`)
+      : `${this.options.command} -L ${quote(`${email}:${password}`)} -F`;
     this.loginOverride = loginCommand;
     this.lastLoginCommand = loginCommand;
     // A sign-in must take effect: never hand back an already-running process

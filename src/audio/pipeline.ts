@@ -248,6 +248,38 @@ export class TrackPipeline {
     return { text: await fetchText(this.asset.manifestUrl), baseUrl: this.asset.manifestUrl };
   }
 
+  /**
+   * Recover the delivered-quality facts for a cached track.
+   *
+   * The cached init segment describes what is served (often FLAC, which carries
+   * no bit depth in its codec configuration), so the source facts recorded when
+   * the track was first decrypted are preferred — the badge should name the tier
+   * Apple delivered, not the container it was repackaged into.
+   */
+  private readCachedFacts(variant: AudioVariant): void {
+    try {
+      const recorded = JSON.parse(
+        fs.readFileSync(path.join(this.directory, "quality.json"), "utf8"),
+      ) as { facts?: StreamFacts | null; check?: QualityCheck | null };
+      if (recorded.facts) {
+        this.facts = recorded.facts;
+        this.check = recorded.check ?? verifyAgainstVariant(variant, recorded.facts);
+        return;
+      }
+    } catch {
+      // No record from the first play: fall back to the init segment on disk.
+    }
+    try {
+      const init = fs.readFileSync(path.join(this.directory, "init.mp4"));
+      this.facts = inspectInitSegment(init);
+      this.check = verifyAgainstVariant(variant, this.facts);
+    } catch (error) {
+      pipelineLog.warn(
+        `cached quality facts unavailable for ${this.asset.name}: ${String(error)}`,
+      );
+    }
+  }
+
   /** Address of the decryptor to talk to for this track. */
   private decryptorService(): string {
     return (this.options.decryptorAddress?.() ?? this.options.decryptorService ?? "").trim();
@@ -267,6 +299,10 @@ export class TrackPipeline {
           ) ?? null)
         : null;
       if (!this.variant) throw new Error("cached track lost its quality metadata");
+      // A cached track never streams again, so the measured facts have to come
+      // from the init segment already on disk — otherwise the badge has nothing
+      // to show for anything played from the cache.
+      this.readCachedFacts(this.variant);
       pipelineLog.info(`cache hit ${this.asset.name} (${this.variant.label})`);
       return { directory: this.directory, mount: this.mount, variant: this.variant };
     }
@@ -378,6 +414,16 @@ export class TrackPipeline {
       try {
         this.facts = inspectInitSegment(encryptedInit);
         this.check = verifyAgainstVariant(variant, this.facts);
+        // Remember the source facts: the cached init describes the repackaged
+        // output, which is not the tier Apple delivered.
+        try {
+          fs.writeFileSync(
+            path.join(this.directory, "quality.json"),
+            JSON.stringify({ facts: this.facts, check: this.check }, null, 2),
+          );
+        } catch {
+          // A missing record only costs the badge on the next cached play.
+        }
         if (this.check.ok) {
           pipelineLog.info(`verified ${this.check.label} for ${this.asset.name}`);
         } else {
