@@ -192,7 +192,7 @@ async function main() {
         if (!media.map) throw new Error("media playlist has no EXT-X-MAP");
         const response = await fetchStream(
           media.map.uri,
-          { range: media.map.range ? rangeHeader(media.map.range) : undefined },
+          { range: media.map.byterange ? rangeHeader(media.map.byterange) : undefined },
           fetch,
         );
         const init = Buffer.from(await response.arrayBuffer());

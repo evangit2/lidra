@@ -193,6 +193,26 @@ function buildSenc(perIvSize:number, samples:{ iv:Buffer|null, subs:{clear:numbe
   return makeFullBoxTest("senc", 0, flags, Buffer.concat(parts));
 }
 
+// Apple's Dolby and Atmos segments omit per-sample sizes and rely on
+// tfhd default_sample_size; without this the decryptor refuses the stream.
+function buildDefaultSizeSegment(sampleSize: number, count: number, trackId = 1): Buffer {
+  const mdat = makeBoxTest("mdat", Buffer.alloc(sampleSize * count, 0x5a));
+  const tfhd = makeFullBoxTest(
+    "tfhd",
+    0,
+    0x000010,
+    Buffer.concat([u32be(trackId), u32be(sampleSize)]),
+  );
+  const build = (dataOffset: number) => {
+    const offset = Buffer.alloc(4);
+    offset.writeInt32BE(dataOffset, 0);
+    const trun = makeFullBoxTest("trun", 0, 0x000001, Buffer.concat([u32be(count), offset]));
+    return makeBoxTest("moof", Buffer.concat([buildMfhd(1), makeBoxTest("traf", Buffer.concat([tfhd, buildTfdt(0), trun]))]));
+  };
+  const moof = build(0);
+  return Buffer.concat([build(moof.length + 8), mdat]);
+}
+
 function buildTrun(sampleSizes:number[], dataOffset:number): Buffer {
   // ISO/IEC 14496-12 order: sample_count, data_offset, first_sample_flags, entries.
   const flags = 0x000001 | 0x000200; // data_offset + sample_size
@@ -530,5 +550,40 @@ describe("mp4 fMP4 decryption", ()=>{
     const vecIv = constIv;
     const vecCt = aesEncrypt(vecPlain, key, vecIv);
     expect(local.decrypt(vecCt, vecIv).equals(vecPlain)).toBe(true);
+  });
+});
+
+describe("parseSegment with default_sample_size", () => {
+  it("expands tfhd default_sample_size into one sample per frame", () => {
+    const segment = buildDefaultSizeSegment(3072, 468);
+    const { samples, trackId } = parseSegment(segment);
+    expect(trackId).toBe(1);
+    expect(samples).toHaveLength(468);
+    expect(samples.every((sample) => sample.size === 3072)).toBe(true);
+    // Every frame must tile the mdat exactly: 468 * 3072 bytes, no gaps.
+    // The mdat sits after the moof, so the first frame starts at the segment end
+    // minus the frames themselves.
+    expect(samples[0].offset).toBe(segment.length - 468 * 3072);
+    expect(samples[samples.length - 1].offset + samples[samples.length - 1].size).toBe(
+      segment.length,
+    );
+    for (let index = 1; index < samples.length; index += 1) {
+      expect(samples[index].offset).toBe(samples[index - 1].offset + samples[index - 1].size);
+    }
+  });
+
+  it("still rejects a run that declares neither sizes nor a default", () => {
+    const segment = buildDefaultSizeSegment(1024, 2).subarray(0);
+    // Rebuild with a tfhd that has no default_sample_size flag.
+    const mdat = makeBoxTest("mdat", Buffer.alloc(2048, 0x11));
+    const tfhd = makeFullBoxTest("tfhd", 0, 0, u32be(1));
+    const offset = Buffer.alloc(4);
+    const trun = makeFullBoxTest("trun", 0, 0x000001, Buffer.concat([u32be(2), offset]));
+    const traf = makeBoxTest("traf", Buffer.concat([tfhd, buildTfdt(0), trun]));
+    const moof = makeBoxTest("moof", Buffer.concat([buildMfhd(1), traf]));
+    offset.writeInt32BE(moof.length + 8, 0);
+    const rebuilt = Buffer.concat([moof, mdat]);
+    expect(segment.length).toBeGreaterThan(0);
+    expect(() => parseSegment(rebuilt)).toThrow(/default_sample_size/);
   });
 });

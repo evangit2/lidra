@@ -196,8 +196,31 @@ function parseTkhdTrackId(buf: Buffer, payloadOffset: number, payloadSize: numbe
   }
 }
 
-function parseTfhdTrackId(buf: Buffer, payloadOffset: number): number {
-  return buf.readUInt32BE(payloadOffset + 4);
+interface TfhdInfo {
+  trackId: number;
+  /** tfhd default_sample_size (flag 0x000010); Dolby and Atmos segments use it. */
+  defaultSampleSize: number | null;
+}
+
+function parseTfhd(buf: Buffer, box: ReturnType<typeof parseBoxes>[number]): TfhdInfo {
+  const flags = box.flags ?? 0;
+  const end = box.payloadOffset + box.payloadSize;
+  let off = box.payloadOffset + 4;
+  if (off + 4 > end) throw new Error("tfhd missing track_ID");
+  const trackId = buf.readUInt32BE(off);
+  off += 4;
+  // Optional fields appear in flag order.
+  if (flags & 0x000001) off += 8; // base_data_offset
+  if (flags & 0x000002) off += 4; // sample_description_index
+  if (flags & 0x000008) off += 4; // default_sample_duration
+  let defaultSampleSize: number | null = null;
+  if (flags & 0x000010) {
+    if (off + 4 > end) throw new Error("tfhd missing default_sample_size");
+    defaultSampleSize = buf.readUInt32BE(off);
+    off += 4;
+  }
+  // default_sample_flags (0x000020) is not needed for decryption.
+  return { trackId, defaultSampleSize };
 }
 
 interface TrunInfo {
@@ -205,7 +228,11 @@ interface TrunInfo {
   sampleSizes: number[];
 }
 
-function parseTrun(buf: Buffer, box: ReturnType<typeof parseBoxes>[number]): TrunInfo {
+function parseTrun(
+  buf: Buffer,
+  box: ReturnType<typeof parseBoxes>[number],
+  defaultSampleSize: number | null = null,
+): TrunInfo {
   // ISO/IEC 14496-12 track run box order:
   //   version/flags, sample_count, [data_offset], [first_sample_flags],
   //   then per-sample fields in flag order.
@@ -242,7 +269,12 @@ function parseTrun(buf: Buffer, box: ReturnType<typeof parseBoxes>[number]): Tru
     if (off > end) throw new Error("trun overrun");
   }
   if (sampleSizes.length === 0) {
-    throw new Error("trun carries no sample sizes; default_sample_size is unsupported");
+    // Without a per-sample table every sample is the size tfhd declares. Apple's
+    // Dolby and Atmos segments do exactly this.
+    if (defaultSampleSize === null) {
+      throw new Error("trun carries no sample sizes and tfhd declares no default_sample_size");
+    }
+    for (let i = 0; i < sampleCount; i++) sampleSizes.push(defaultSampleSize);
   }
   return { dataOffset, sampleSizes };
 }
@@ -339,13 +371,13 @@ export function parseSegment(segment: Buffer): { trackId: number; samples: Segme
         const trafChildren = parseBoxes(segment, traf.payloadOffset, traf.payloadOffset + traf.payloadSize);
         const tfhd = trafChildren.find((c) => c.type === "tfhd");
         if (!tfhd) throw new Error("traf missing tfhd");
-        const curTrackId = parseTfhdTrackId(segment, tfhd.payloadOffset);
-        if (trackId === null) trackId = curTrackId;
+        const tfhdInfo = parseTfhd(segment, tfhd);
+        if (trackId === null) trackId = tfhdInfo.trackId;
         const truns = trafChildren.filter((c) => c.type === "trun");
         if (truns.length === 0) throw new Error("traf missing trun");
         const allSizes: number[] = [];
         for (const tr of truns) {
-          const info = parseTrun(segment, tr);
+          const info = parseTrun(segment, tr, tfhdInfo.defaultSampleSize);
           allSizes.push(...info.sampleSizes);
         }
         let sencInfo: SencPerSample[] | null = null;
