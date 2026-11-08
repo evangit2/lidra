@@ -287,6 +287,11 @@ export interface TrayStrings {
   audioWrapperCommand: string;
   audioWrapperCommandHint: string;
   audioWrapperAutostart: string;
+  wrapperEmail: string;
+  wrapperPassword: string;
+  wrapperCode: string;
+  wrapperSignInAction: string;
+  signOutAction: string;
   audioFfmpegReady: string;
   audioFfmpegMissing: string;
   qualityAuto: string;
@@ -369,6 +374,11 @@ const TRAY_TEXT: Record<keyof TrayStrings, Record<string, string>> = {
     en: 'Command Lidra runs to start the FairPlay wrapper, which is what lossless and Atmos need. Leave blank to run one yourself.',
   },
   audioWrapperAutostart: { en: 'Start wrapper with Lidra' },
+  wrapperEmail: { en: 'Apple ID' },
+  wrapperPassword: { en: 'Password' },
+  wrapperCode: { en: 'Two-factor code' },
+  wrapperSignInAction: { en: 'Sign in to Apple (app session)' },
+  signOutAction: { en: 'Sign out of Apple Music' },
   audioFfmpegReady: { en: 'ffmpeg: ready' },
   audioFfmpegMissing: { en: 'ffmpeg: missing — lossless and Dolby cannot play' },
   qualityAuto: { en: 'Automatic (best available)' },

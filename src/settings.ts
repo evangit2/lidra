@@ -96,11 +96,19 @@ export interface SettingsState {
 }
 
 /** Isolated preload API for the local Settings page. */
+export interface WrapperSignInPayload {
+  email: string;
+  password: string;
+  code: string;
+}
+
 export interface SettingsBridge {
   /** Read the current settings and available choices. */
   getState(): Promise<SettingsState>;
   /** Apply a validated action and return the resulting state. */
   apply(action: SettingsAction): Promise<SettingsState>;
+  wrapperSignIn(payload: WrapperSignInPayload): Promise<{ state: string; detail: string }>;
+  signOut(): Promise<void>;
   /** Subscribe to state changes and return an unsubscribe function. */
   onState(listener: (state: SettingsState) => void): () => void;
 }

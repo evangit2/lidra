@@ -8,6 +8,7 @@ import {
   Tray,
   webFrameMain,
 } from "electron";
+import { spawn } from "child_process";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -458,6 +459,31 @@ function publishQuality(payload: {
 
 let wrapperService: WrapperService | null = null;
 
+/**
+ * Write the one-time 2FA code where the wrapper looks for it. The wrapper reads
+ * `<base-dir>/2fa.txt` relative to its own rootfs, so the path comes from the
+ * configured command's directory.
+ */
+async function writeWrapperCode(code: string): Promise<void> {
+  const command = getAudioWrapperCommand();
+  const match = /(?:cd\s+([^&]+?)\s*&&)/.exec(command);
+  const root = match ? expandWrapperCommand(match[1]!.trim()) : os.homedir();
+  const path2fa = path.join(root, "rootfs/data/data/com.apple.android.music/files/2fa.txt");
+  try {
+    fs.mkdirSync(path.dirname(path2fa), { recursive: true, mode: 0o700 });
+    fs.writeFileSync(path2fa, code, { mode: 0o600 });
+  } catch {
+    // Root-owned rootfs: fall back to sudo so the file lands where the wrapper looks.
+    await new Promise<void>((resolve) => {
+      const child = spawn("sudo", ["-n", "sh", "-c", `printf '%s' '${code.replace(/'/g, `'\\''`)}' > '${path2fa}'`], {
+        stdio: "ignore",
+      });
+      child.once("exit", () => resolve());
+      child.once("error", () => resolve());
+    });
+  }
+}
+
 /** Expand `~` and `$HOME` in the configured wrapper command line. */
 function expandWrapperCommand(command: string): string {
   const home = os.homedir();
@@ -577,6 +603,29 @@ function initAudioEngine(ses: Electron.Session): AudioEngine {
   });
   wrapperService = wrapper;
   ipcMain.handle("lidra:wrapper-status", () => wrapper.status());
+  ipcMain.handle("lidra:wrapper-signin", async (_event, payload: unknown) => {
+    const { email, password, code } = (payload ?? {}) as Record<string, string>;
+    if (typeof email !== "string" || typeof password !== "string" || !email || !password) {
+      return { state: "error", detail: "Apple ID and password are required" };
+    }
+    // The wrapper's login is a one-shot CLI run that authenticates against Apple's
+    // store services and caches the session in its own data directory. Lidra
+    // passes the credentials straight through and keeps no copy.
+    if (typeof code === "string" && code.trim()) {
+      await writeWrapperCode(code.trim());
+    }
+    const status = await wrapper.startWithLogin(email, password);
+    return { state: status.state, detail: status.detail };
+  });
+  ipcMain.handle("lidra:signout", async () => {
+    await ses.clearStorageData({
+      storages: ["cookies", "localstorage", "indexdb", "serviceworkers", "cachestorage"],
+    });
+    await ses.clearCache();
+    const win = BrowserWindow.getAllWindows()[0];
+    if (win) await win.webContents.session.clearAuthCache().catch(() => undefined);
+    mainLog.info("signed out of the web session");
+  });
   ipcMain.handle("lidra:wrapper-start", () => wrapper.start());
   ipcMain.handle("lidra:wrapper-stop", () => {
     wrapper.stop();

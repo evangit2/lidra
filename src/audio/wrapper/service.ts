@@ -83,6 +83,8 @@ export class WrapperService {
   private child: ChildProcess | null = null;
   private state: WrapperState = "stopped";
   private detail = "";
+  /** Command used for the one-shot login run, when one is in flight. */
+  private loginOverride: string | null = null;
   private readonly options: Required<Pick<WrapperServiceOptions, "command" | "decryptor" | "manifest">> &
     WrapperServiceOptions;
 
@@ -108,7 +110,7 @@ export class WrapperService {
 
   /** Start the wrapper if it is not already serving its sockets. */
   async start(): Promise<WrapperStatus> {
-    const command = this.options.command.trim();
+    const command = (this.loginOverride ?? this.options.command).trim();
     if (!command) {
       this.setState("error", "no wrapper command configured");
       return this.status();
@@ -161,6 +163,25 @@ export class WrapperService {
     }
     if (this.child) this.setState("error", `no socket on ${this.options.decryptor}`);
     return this.status();
+  }
+
+  /**
+   * Run the wrapper's one-shot Apple ID login, then serve.
+   *
+   * The wrapper authenticates once against Apple's store services and caches the
+   * session in its own data directory; later starts do not need credentials. That
+   * cached app session is what FairPlay keys are issued against — a web
+   * media-user-token cannot stand in for it.
+   */
+  async startWithLogin(email: string, password: string): Promise<WrapperStatus> {
+    const quote = (value: string): string => `'${value.replace(/'/g, `'\\''`)}'`;
+    const loginCommand = `${this.options.command} -L ${quote(`${email}:${password}`)} -F`;
+    this.loginOverride = loginCommand;
+    try {
+      return await this.start();
+    } finally {
+      this.loginOverride = null;
+    }
   }
 
   /** Stop the wrapper if Lidra started it. */

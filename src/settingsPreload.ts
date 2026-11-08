@@ -5,6 +5,8 @@ import type { SettingsBridge, SettingsState } from "./settings";
 contextBridge.exposeInMainWorld("lidraSettings", {
   getState: () => ipcRenderer.invoke("settings:get"),
   apply: (action) => ipcRenderer.invoke("settings:apply", action),
+  wrapperSignIn: (payload) => ipcRenderer.invoke("lidra:wrapper-signin", payload),
+  signOut: () => ipcRenderer.invoke("lidra:signout"),
   onState: (listener) => {
     const onState = (_event: IpcRendererEvent, state: SettingsState): void =>
       listener(state);

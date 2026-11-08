@@ -121,6 +121,34 @@
   for (const key of ['lastfmConnect', 'lastfmDisconnect']) {
     byId(key).addEventListener('click', () => apply({ type: key }));
   }
+  byId('wrapperSignIn').addEventListener('click', async () => {
+    const status = byId('wrapper-status');
+    status.textContent = 'Signing in…';
+    try {
+      const result = await bridge.wrapperSignIn({
+        email: byId('wrapperEmail').value.trim(),
+        password: byId('wrapperPassword').value,
+        code: byId('wrapperCode').value.trim(),
+      });
+      status.textContent = result.detail ? `${result.state}: ${result.detail}` : result.state;
+      byId('wrapperPassword').value = '';
+      byId('wrapperCode').value = '';
+    } catch (error) {
+      status.textContent = String(error && error.message ? error.message : error);
+    }
+  });
+
+  byId('signOut').addEventListener('click', async () => {
+    const status = byId('wrapper-status');
+    status.textContent = 'Signing out…';
+    try {
+      await bridge.signOut();
+      status.textContent = 'Signed out';
+    } catch (error) {
+      status.textContent = String(error && error.message ? error.message : error);
+    }
+  });
+
   const unsubscribe = bridge.onState((next) => {
     revision++;
     render(next);
