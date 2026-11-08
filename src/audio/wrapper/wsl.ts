@@ -209,9 +209,26 @@ export async function ensureWslRuntime(options: {
     };
   }
 
-  const existing = distros.find((entry) => entry.name === distro);
+  let existing: WslDistro | undefined = distros.find((entry) => entry.name === distro);
+
+  const installDir = options.installDir ?? path.join(os.homedir(), "AppData", "Local", "Lidra", "wsl");
+  fs.mkdirSync(installDir, { recursive: true });
+
+  // A version 1 distro is only useful if it actually holds the wrapper. An
+  // earlier release could import an empty environment (or fail halfway), and the
+  // listing alone cannot tell the difference, so look inside before trusting it.
   if (existing && existing.version === 1) {
-    return { ok: true, code: "ready", detail: `${distro} is ready`, distro };
+    const health = await runCommand(
+      "wsl.exe",
+      ["-d", distro, "-u", "root", "--", "/bin/sh", "-c", "test -x /opt/lidra/wrapper && test -d /opt/lidra/rootfs/system"],
+      60_000,
+    );
+    if (health.code === 0) {
+      return { ok: true, code: "ready", detail: `${distro} is ready`, distro, imported: false };
+    }
+    progress(`${distro} has no wrapper inside it; rebuilding it`);
+    await runCommand("wsl.exe", ["--unregister", distro], 120_000);
+    existing = undefined;
   }
 
   const archive = options.archivePaths.find((candidate) => fs.existsSync(candidate));
@@ -223,9 +240,6 @@ export async function ensureWslRuntime(options: {
       hint: "Reinstall Lidra, or point Settings → Audio at a wrapper folder you already have.",
     };
   }
-
-  const installDir = options.installDir ?? path.join(os.homedir(), "AppData", "Local", "Lidra", "wsl");
-  fs.mkdirSync(installDir, { recursive: true });
 
   // An existing distro with the wrong version is replaced rather than converted:
   // converting rewrites the user's own environment and can lose data.

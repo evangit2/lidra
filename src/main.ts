@@ -779,7 +779,13 @@ function initAudioEngine(ses: Electron.Session): AudioEngine {
   const configuredWrapperCommand = expandWrapperCommand(getAudioWrapperCommand());
   // The package ships a Unix default for this field, so on Windows it is only
   // usable when it names something Windows can actually start.
-  const windowsRuntime = process.platform === "win32" && !isWindowsWrapperCommand(configuredWrapperCommand);
+  // Our own WSL environment is managed by Lidra even after it has been written
+  // into the settings file: an upgrade must be able to rebuild it when the copy
+  // on disk is empty or incomplete.
+  const managedWslDistro = /wsl(?:\.exe)?\s+-d\s+LidraWrapper\b/i.test(configuredWrapperCommand);
+  const windowsRuntime =
+    process.platform === "win32" &&
+    (!isWindowsWrapperCommand(configuredWrapperCommand) || managedWslDistro);
   // Linux and the BSDs can run the shipped payload directly; use it whenever the
   // configured line points at a wrapper that is not installed.
   const bundledRuntime = process.platform === "linux" && !configuredWrapperExists(configuredWrapperCommand);
@@ -870,7 +876,14 @@ function initAudioEngine(ses: Electron.Session): AudioEngine {
     if (typeof code === "string" && code.trim()) {
       await writeWrapperCode(code.trim());
     }
-    const status = await wrapper.startWithLogin(email, password);
+    let status = await wrapper.startWithLogin(email, password);
+    // A stale or half-imported Windows environment fails as a bare -1 with no
+    // output. Rebuild it once and retry, so upgrading does not need a reinstall.
+    if (status.state === "error" && process.platform === "win32") {
+      mainLog.warn("wrapper login failed; rebuilding the runtime and retrying once");
+      await prepareWindowsWrapper(wrapper, decryptorAddress, manifestAddress);
+      status = await wrapper.startWithLogin(email, password);
+    }
     return { state: status.state, detail: status.detail };
   });
   ipcMain.handle("lidra:signout", async () => {

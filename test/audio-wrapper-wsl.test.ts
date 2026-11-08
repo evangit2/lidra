@@ -135,8 +135,9 @@ describe("ensureWslRuntime", () => {
   it("accepts an existing version 1 environment without importing", async () => {
     const runImpl = vi.fn(async () => ({ code: 0, stdout: LISTING, stderr: "" }));
     const result = await ensureWslRuntime({ archivePaths: [], platform: "win32", runImpl });
-    expect(result).toMatchObject({ ok: true, code: "ready", distro: "LidraWrapper" });
-    expect(runImpl).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ ok: true, code: "ready", distro: "LidraWrapper", imported: false });
+    // One listing, one health probe into the environment, no import.
+    expect(runImpl).toHaveBeenCalledTimes(2);
   });
 
   it("imports the shipped files when no environment exists", async () => {
@@ -157,6 +158,58 @@ describe("ensureWslRuntime", () => {
     expect(result).toMatchObject({ ok: true, imported: true });
     expect(calls.some((args) => args[0] === "--import")).toBe(true);
     expect(calls.find((args) => args[0] === "--import")).toContain("--version");
+  });
+
+  it("rebuilds a version 1 environment that has no wrapper inside it", async () => {
+    const calls: string[][] = [];
+    const runImpl = async (_command: string, args: string[]) => {
+      calls.push(args);
+      if (args[0] === "--list") {
+        return { code: 0, stdout: "  NAME STATE VERSION\n  LidraWrapper  Stopped  1\n", stderr: "" };
+      }
+      // The health probe: the imported environment is empty.
+      if (args[0] === "-d" && args.includes("test -x /opt/lidra/wrapper && test -d /opt/lidra/rootfs/system")) {
+        return { code: 1, stdout: "", stderr: "not found" };
+      }
+      return { code: 0, stdout: "", stderr: "" };
+    };
+
+    const result = await ensureWslRuntime({
+      archivePaths: [archiveFile()],
+      installDir: fs.mkdtempSync(path.join(os.tmpdir(), "lidra-wsl-home-")),
+      platform: "win32",
+      runImpl,
+    });
+
+    expect(result.ok).toBe(true);
+    const flat = calls.map((args) => args[0]);
+    expect(flat[0]).toBe("--list");
+    expect(flat).toContain("--unregister");
+    expect(flat).toContain("--import");
+    // Unregistered before importing, never after.
+    expect(flat.indexOf("--unregister")).toBeLessThan(flat.lastIndexOf("--import"));
+  });
+
+  it("keeps a healthy version 1 environment and does not import again", async () => {
+    const calls: string[][] = [];
+    const runImpl = async (_command: string, args: string[]) => {
+      calls.push(args);
+      if (args[0] === "--list") {
+        return { code: 0, stdout: "  NAME STATE VERSION\n  LidraWrapper  Stopped  1\n", stderr: "" };
+      }
+      return { code: 0, stdout: "", stderr: "" };
+    };
+
+    const result = await ensureWslRuntime({
+      archivePaths: [archiveFile()],
+      installDir: fs.mkdtempSync(path.join(os.tmpdir(), "lidra-wsl-home-")),
+      platform: "win32",
+      runImpl,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.imported).toBe(false);
+    expect(calls.some((args) => args[0] === "--import")).toBe(false);
   });
 
   it("replaces a version 2 environment instead of converting it", async () => {
