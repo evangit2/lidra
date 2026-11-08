@@ -84,6 +84,7 @@ import { WrapperService, isListening } from "./audio/wrapper/service";
 import {
   buildWslCommand,
   ensureWslRuntime,
+  diagnoseWslRuntime,
   isWindowsWrapperCommand,
   runtimeArchiveCandidates,
 } from "./audio/wrapper/wsl";
@@ -883,6 +884,26 @@ function initAudioEngine(ses: Electron.Session): AudioEngine {
       mainLog.warn("wrapper login failed; rebuilding the runtime and retrying once");
       await prepareWindowsWrapper(wrapper, decryptorAddress, manifestAddress);
       status = await wrapper.startWithLogin(email, password);
+      if (status.state === "error") {
+        // A bare -1 from wsl.exe says nothing. Collect what each layer sees and
+        // leave a report behind, so the next run has an actual reason.
+        const report = await diagnoseWslRuntime({});
+        const text = report
+          .map((entry) => `## ${entry.step} (exit ${entry.code})\n${entry.output}`)
+          .join("\n\n");
+        const file = path.join(app.getPath("userData"), "wrapper-diagnose.txt");
+        try {
+          fs.writeFileSync(file, `${new Date().toISOString()}\n\n${text}\n`, { mode: 0o600 });
+        } catch {
+          // The message below still names the failing step.
+        }
+        const failing = report.find((entry) => entry.code !== 0) ?? report[report.length - 1];
+        mainLog.error(`wrapper diagnosis:\n${text}`);
+        status = {
+          ...status,
+          detail: `${status.detail || "wrapper exited"} — ${failing.step}: ${failing.output.split("\n")[0]} (full report: ${file})`,
+        };
+      }
     }
     return { state: status.state, detail: status.detail };
   });

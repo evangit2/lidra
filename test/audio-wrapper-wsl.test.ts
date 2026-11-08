@@ -24,7 +24,7 @@ const LISTING = utf16(
   [
     "  NAME            STATE           VERSION",
     "* Ubuntu-22.04    Running         2",
-    "  LidraWrapper    Stopped         1",
+    "  LidraWrapper    Stopped         2",
     "  Debian          Stopped         1",
     "",
   ].join("\r\n"),
@@ -34,7 +34,7 @@ describe("parseWslList", () => {
   it("reads names, versions and the default marker from UTF-16 output", () => {
     expect(parseWslList(LISTING)).toEqual([
       { name: "Ubuntu-22.04", version: 2, isDefault: true },
-      { name: "LidraWrapper", version: 1, isDefault: false },
+      { name: "LidraWrapper", version: 2, isDefault: false },
       { name: "Debian", version: 1, isDefault: false },
     ]);
   });
@@ -93,15 +93,19 @@ describe("buildWslCommand", () => {
 });
 
 describe("importArguments", () => {
-  it("imports the payload as a version 1 environment", () => {
+  it("imports the payload as a version 2 environment by default", () => {
     expect(importArguments("LidraWrapper", "C:\\wsl", "C:\\p\\rootfs.tar.gz")).toEqual([
       "--import",
       "LidraWrapper",
       "C:\\wsl",
       "C:\\p\\rootfs.tar.gz",
       "--version",
-      "1",
+      "2",
     ]);
+  });
+
+  it("can ask for version 1 when the machine cannot virtualise", () => {
+    expect(importArguments("LidraWrapper", "C:\\wsl", "C:\\p\\rootfs.tar.gz", 1)).toContain("1");
   });
 });
 
@@ -132,7 +136,7 @@ describe("ensureWslRuntime", () => {
     expect(result.hint).toContain("wsl --install");
   });
 
-  it("accepts an existing version 1 environment without importing", async () => {
+  it("accepts an existing version 2 environment without importing", async () => {
     const runImpl = vi.fn(async () => ({ code: 0, stdout: LISTING, stderr: "" }));
     const result = await ensureWslRuntime({ archivePaths: [], platform: "win32", runImpl });
     expect(result).toMatchObject({ ok: true, code: "ready", distro: "LidraWrapper", imported: false });
@@ -165,7 +169,7 @@ describe("ensureWslRuntime", () => {
     const runImpl = async (_command: string, args: string[]) => {
       calls.push(args);
       if (args[0] === "--list") {
-        return { code: 0, stdout: "  NAME STATE VERSION\n  LidraWrapper  Stopped  1\n", stderr: "" };
+        return { code: 0, stdout: "  NAME STATE VERSION\n  LidraWrapper  Stopped  2\n", stderr: "" };
       }
       // The health probe: the imported environment is empty.
       if (args[0] === "-d" && args.includes("test -x /opt/lidra/wrapper && test -d /opt/lidra/rootfs/system")) {
@@ -190,12 +194,12 @@ describe("ensureWslRuntime", () => {
     expect(flat.indexOf("--unregister")).toBeLessThan(flat.lastIndexOf("--import"));
   });
 
-  it("keeps a healthy version 1 environment and does not import again", async () => {
+  it("keeps a healthy version 2 environment and does not import again", async () => {
     const calls: string[][] = [];
     const runImpl = async (_command: string, args: string[]) => {
       calls.push(args);
       if (args[0] === "--list") {
-        return { code: 0, stdout: "  NAME STATE VERSION\n  LidraWrapper  Stopped  1\n", stderr: "" };
+        return { code: 0, stdout: "  NAME STATE VERSION\n  LidraWrapper  Stopped  2\n", stderr: "" };
       }
       return { code: 0, stdout: "", stderr: "" };
     };
@@ -212,12 +216,12 @@ describe("ensureWslRuntime", () => {
     expect(calls.some((args) => args[0] === "--import")).toBe(false);
   });
 
-  it("replaces a version 2 environment instead of converting it", async () => {
+  it("replaces a version 1 environment with a version 2 one", async () => {
     const calls: string[][] = [];
     const runImpl = async (_command: string, args: string[]) => {
       calls.push(args);
       if (args[0] === "--list") {
-        return { code: 0, stdout: "  NAME STATE VERSION\n  LidraWrapper  Stopped  2\n", stderr: "" };
+        return { code: 0, stdout: "  NAME STATE VERSION\n  LidraWrapper  Stopped  1\n", stderr: "" };
       }
       return { code: 0, stdout: "", stderr: "" };
     };
@@ -229,6 +233,7 @@ describe("ensureWslRuntime", () => {
     });
     expect(result.ok).toBe(true);
     expect(calls.map((args) => args[0])).toEqual(["--list", "--unregister", "--import", "-d"]);
+    expect(calls.find((args) => args[0] === "--import")).toContain("2");
     // The prep pass gives the chrooted image the device nodes a Linux root has.
     const prep = calls.find((args) => args[0] === "-d");
     expect(prep?.join(" ")).toContain("rootfs/dev");

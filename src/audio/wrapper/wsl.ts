@@ -14,6 +14,16 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+/**
+ * Which WSL generation to import.
+ *
+ * The wrapper chroots into an Android userspace and reads device nodes, which is
+ * ordinary work for a real Linux kernel and hit-or-miss under version 1's
+ * syscall translation. Version 2 is a small VM, so it is tried first and the
+ * environment falls back to version 1 only when the machine cannot virtualise.
+ */
+export const PREFERRED_WSL_VERSION = 2;
+
 /** Name of the Linux environment Lidra imports for itself. */
 export const WSL_DISTRO = "LidraWrapper";
 
@@ -124,9 +134,14 @@ export function buildWslCommand(options: {
   return `wsl.exe -d ${distro} -u root -- /bin/sh -c "${script}"`;
 }
 
-/** `wsl.exe --import <distro> <install dir> <tarball> --version 1` */
-export function importArguments(distro: string, installDir: string, tarball: string): string[] {
-  return ["--import", distro, installDir, tarball, "--version", "1"];
+/** `wsl.exe --import <distro> <install dir> <tarball> --version <n>` */
+export function importArguments(
+  distro: string,
+  installDir: string,
+  tarball: string,
+  version: number = PREFERRED_WSL_VERSION,
+): string[] {
+  return ["--import", distro, installDir, tarball, "--version", String(version)];
 }
 
 export interface WslSetupResult {
@@ -178,6 +193,44 @@ export function runtimeArchiveCandidates(resourcesPath: string, repoRoot?: strin
 }
 
 /**
+ * Collect what the Windows side actually sees, for a machine where the wrapper
+ * exits without saying anything. Each step is independent: a failure says which
+ * layer broke (WSL, the import, the binary) instead of leaving a bare -1.
+ */
+export async function diagnoseWslRuntime(options: {
+  distro?: string;
+  runImpl?: typeof run;
+}): Promise<Array<{ step: string; code: number; output: string }>> {
+  const distro = options.distro ?? WSL_DISTRO;
+  const runCommand = options.runImpl ?? run;
+  const probes: Array<{ step: string; command: string; args: string[] }> = [
+    { step: "wsl --list --verbose", command: "wsl.exe", args: ["--list", "--verbose"] },
+    {
+      step: "distro answers",
+      command: "wsl.exe",
+      args: ["-d", distro, "-u", "root", "--", "/bin/sh", "-c", "echo alive; cat /etc/os-release 2>/dev/null | head -2"],
+    },
+    {
+      step: "wrapper present",
+      command: "wsl.exe",
+      args: ["-d", distro, "-u", "root", "--", "/bin/sh", "-c", `ls -l ${WSL_WRAPPER_DIR}/wrapper ${WSL_WRAPPER_DIR}/rootfs/system 2>&1 | head -6`],
+    },
+    {
+      step: "wrapper starts",
+      command: "wsl.exe",
+      args: ["-d", distro, "-u", "root", "--", "/bin/sh", "-c", `cd ${WSL_WRAPPER_DIR} && ./wrapper -h 2>&1 | head -20`],
+    },
+  ];
+  const report: Array<{ step: string; code: number; output: string }> = [];
+  for (const probe of probes) {
+    const result = await runCommand(probe.command, probe.args, 60_000);
+    const output = `${result.stdout}\n${result.stderr}`.trim().slice(0, 2000);
+    report.push({ step: probe.step, code: result.code, output: output || "(no output)" });
+  }
+  return report;
+}
+
+/**
  * Make sure a version 1 distro holding the wrapper exists, importing it from the
  * payload shipped with the app when it does not.
  */
@@ -214,10 +267,19 @@ export async function ensureWslRuntime(options: {
   const installDir = options.installDir ?? path.join(os.homedir(), "AppData", "Local", "Lidra", "wsl");
   fs.mkdirSync(installDir, { recursive: true });
 
-  // A version 1 distro is only useful if it actually holds the wrapper. An
-  // earlier release could import an empty environment (or fail halfway), and the
-  // listing alone cannot tell the difference, so look inside before trusting it.
-  if (existing && existing.version === 1) {
+  // An older release could import an empty environment (or fail halfway), and a
+  // version 1 environment behaves differently enough to matter, so an existing
+  // distro is either exactly what we would create now or it is replaced.
+  if (existing && existing.version !== PREFERRED_WSL_VERSION) {
+    progress(`replacing ${distro} with a version ${PREFERRED_WSL_VERSION} environment`);
+    await runCommand("wsl.exe", ["--unregister", distro], 120_000);
+    existing = undefined;
+  }
+
+  // A distro is only useful if it actually holds the wrapper. An earlier release
+  // could import an empty environment (or fail halfway), and the listing alone
+  // cannot tell the difference, so look inside before trusting it.
+  if (existing && existing.version === PREFERRED_WSL_VERSION) {
     const health = await runCommand(
       "wsl.exe",
       ["-d", distro, "-u", "root", "--", "/bin/sh", "-c", "test -x /opt/lidra/wrapper && test -d /opt/lidra/rootfs/system"],
@@ -231,6 +293,7 @@ export async function ensureWslRuntime(options: {
     existing = undefined;
   }
 
+
   const archive = options.archivePaths.find((candidate) => fs.existsSync(candidate));
   if (!archive) {
     return {
@@ -241,28 +304,30 @@ export async function ensureWslRuntime(options: {
     };
   }
 
-  // An existing distro with the wrong version is replaced rather than converted:
-  // converting rewrites the user's own environment and can lose data.
-  if (existing && existing.version !== 1) {
-    progress(`replacing ${distro} with a version 1 environment`);
-    await runCommand("wsl.exe", ["--unregister", distro], 120_000);
-  }
-
   progress(`importing the wrapper environment (${path.basename(archive)})`);
-  let imported = await runCommand("wsl.exe", importArguments(distro, installDir, archive), 600_000);
+  let version = PREFERRED_WSL_VERSION;
+  let imported = await runCommand("wsl.exe", importArguments(distro, installDir, archive, version), 600_000);
   // The listing above can miss a distro (older WSL builds, localised output), in
   // which case the import reports that the name is taken. Clear and retry once.
   if (imported.code !== 0 && /already exists|bereits vorhanden|existe d[eé]j[aà]/i.test(imported.stderr)) {
     progress(`removing the stale ${distro} environment`);
     await runCommand("wsl.exe", ["--unregister", distro], 120_000);
-    imported = await runCommand("wsl.exe", importArguments(distro, installDir, archive), 600_000);
+    imported = await runCommand("wsl.exe", importArguments(distro, installDir, archive, version), 600_000);
+  }
+  // Machines without virtualisation (or with WSL2 uninstalled) can still run the
+  // wrapper under version 1's translation layer, so fall back rather than fail.
+  if (imported.code !== 0) {
+    progress("version 2 is unavailable here; using version 1");
+    version = 1;
+    await runCommand("wsl.exe", ["--unregister", distro], 120_000);
+    imported = await runCommand("wsl.exe", importArguments(distro, installDir, archive, version), 600_000);
   }
   if (imported.code !== 0) {
     return {
       ok: false,
       code: "import-failed",
       detail: (imported.stderr || imported.stdout).trim().slice(0, 400) || "wsl --import failed",
-      hint: "The WSL feature may be present but version 1 support is disabled. Run 'wsl --set-default-version 1' as admin and retry.",
+      hint: "Enable virtualization for WSL 2 (or install the WSL feature) and try again.",
     };
   }
 
@@ -281,7 +346,9 @@ export async function ensureWslRuntime(options: {
       "--",
       "/bin/sh",
       "-c",
-      `cd ${WSL_WRAPPER_DIR} && mkdir -p rootfs/dev && ` +
+      `cd ${WSL_WRAPPER_DIR} && chmod 755 wrapper 2>/dev/null; ` +
+        `chmod 755 /bin/busybox /bin/sh 2>/dev/null; ` +
+        `mkdir -p rootfs/dev && ` +
         "for device in null zero random urandom; do " +
         "[ -e rootfs/dev/$device ] && continue; " +
         "cp -a /dev/$device rootfs/dev/$device 2>/dev/null || " +

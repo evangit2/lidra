@@ -242,7 +242,9 @@ export class WrapperService {
     /** Last line the wrapper printed, kept for the failure message. */
     let lastLine = "";
     const note = (chunk: Buffer): void => {
-      const text = chunk.toString();
+      // wsl.exe speaks UTF-16LE, so a raw utf8 read arrives as null-joined text
+      // and no pattern matches. Normalise before looking for anything.
+      const text = chunk.includes(0) ? chunk.toString("utf16le") : chunk.toString();
       for (const line of text.split("\n")) {
         const trimmed = line.trim();
         if (!trimmed) continue;
