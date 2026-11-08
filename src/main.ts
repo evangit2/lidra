@@ -551,6 +551,11 @@ function initAudioEngine(ses: Electron.Session): AudioEngine {
     decryptMode: getAudioDecryptorService().trim() ? "wrapper" : "key",
     decryptorService: getAudioDecryptorService(),
     manifestService: getAudioManifestService(),
+    restartDecryptor: wrapperService
+      ? async () => {
+          await wrapperService?.restart();
+        }
+      : undefined,
     // Only meaningful with a Widevine device: Apple's lossless renditions are
     // FairPlay, so the keyed fallback is the 256 kbps web-playback asset.
     webPlayback: widevine

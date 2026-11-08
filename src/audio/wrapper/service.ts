@@ -89,6 +89,12 @@ export class WrapperService {
   private codePrompted = false;
   /** Command used for the one-shot login run, when one is in flight. */
   private loginOverride: string | null = null;
+  /**
+   * The login command that last worked. The wrapper's key context is pinned per
+   * process, so recovering from a stale context means starting a fresh process —
+   * and a fresh process only has keys if it logs in the same way.
+   */
+  private lastLoginCommand: string | null = null;
   /** Longer deadline while an interactive login runs (auth + lease). */
   private loginTimeoutMs: number | null = null;
   private readonly options: Required<Pick<WrapperServiceOptions, "command" | "decryptor" | "manifest">> &
@@ -116,7 +122,7 @@ export class WrapperService {
 
   /** Start the wrapper if it is not already serving its sockets. */
   async start(): Promise<WrapperStatus> {
-    const command = (this.loginOverride ?? this.options.command).trim();
+    const command = (this.loginOverride ?? this.lastLoginCommand ?? this.options.command).trim();
     if (!command) {
       this.setState("error", "no wrapper command configured");
       return this.status();
@@ -196,6 +202,7 @@ export class WrapperService {
     const quote = (value: string): string => `'${value.replace(/'/g, `'\\''`)}'`;
     const loginCommand = `${this.options.command} -L ${quote(`${email}:${password}`)} -F`;
     this.loginOverride = loginCommand;
+    this.lastLoginCommand = loginCommand;
     // Signing in reaches Apple before any socket opens, so allow for it.
     this.loginTimeoutMs = 120_000;
     try {
@@ -204,6 +211,21 @@ export class WrapperService {
       this.loginOverride = null;
       this.loginTimeoutMs = null;
     }
+  }
+
+  /**
+   * Replace the running wrapper with a fresh one.
+   *
+   * Used when the decryptor's key context no longer matches the song: a new
+   * process re-derives it from the key the playlist names.
+   */
+  async restart(): Promise<WrapperStatus> {
+    if (!this.lastLoginCommand) {
+      throw new Error("no wrapper sign-in available to restart with");
+    }
+    this.stop();
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    return this.start();
   }
 
   /** Stop the wrapper if Lidra started it. */

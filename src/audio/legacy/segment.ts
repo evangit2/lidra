@@ -176,93 +176,162 @@ export function sampleLayout(segment: Buffer, perSampleIvSize = 8): SampleLayout
  * Decrypt every sample of a fragment through the wrapper service.
  * Returns a same-length copy with the ciphertext replaced by plaintext.
  */
+/**
+ * Sanity-check decrypted audio before it reaches the transcoder.
+ *
+ * The wrapper pins one key context per song for the life of its process, so a
+ * wrong arm does not fail — it returns plausible-looking noise. Every ALAC
+ * frame repeats the same header bits and every AC-3/EC-3 frame starts with the
+ * 0x0b77 sync word, which is enough to tell real plaintext from noise.
+ */
+export function verifyFragmentPlaintext(
+  output: Buffer,
+  layout: SampleLayout,
+): { ok: boolean; reason?: string } {
+  if (layout.samples.length === 0) return { ok: false, reason: "fragment has no samples" };
+  const head = (index: number): Buffer => {
+    const sample = layout.samples[index];
+    return output.subarray(sample.offset, sample.offset + 4);
+  };
+  const first = head(0);
+  if (first.length < 4) return { ok: false, reason: "sample outside the fragment" };
+  const isAc3 = first[0] === 0x0b && first[1] === 0x77;
+  if (isAc3) {
+    let matching = 0;
+    for (let index = 0; index < layout.samples.length; index += 1) {
+      const sample = head(index);
+      if (sample[0] === 0x0b && sample[1] === 0x77) matching += 1;
+    }
+    const ratio = matching / layout.samples.length;
+    return ratio >= 0.95
+      ? { ok: true }
+      : { ok: false, reason: `only ${(ratio * 100).toFixed(0)}% of frames carry the AC-3 sync word` };
+  }
+  // ALAC: the frame header's first three bytes depend only on the stream format,
+  // so they repeat for every frame of a healthy fragment.
+  const prefix = first.subarray(0, 3);
+  let matching = 0;
+  for (let index = 0; index < layout.samples.length; index += 1) {
+    if (head(index).subarray(0, 3).equals(prefix)) matching += 1;
+  }
+  const ratio = matching / layout.samples.length;
+  return ratio >= 0.95
+    ? { ok: true }
+    : { ok: false, reason: `only ${(ratio * 100).toFixed(0)}% of frames share the ALAC header` };
+}
+
+/** Raised when the decryptor returns noise instead of plaintext. */
+export class DecryptMismatchError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "DecryptMismatchError";
+  }
+}
+
+/**
+ * Decrypt every sample of a fragment through the wrapper service.
+ *
+ * Returns a same-length copy with the ciphertext replaced by plaintext. All the
+ * protected spans of the fragment travel in one pipelined batch: the service is
+ * stateless per span, and waiting for a round trip per sample is what made
+ * lossless start-up slow.
+ */
 export async function decryptSegmentLegacy(
   segment: Buffer,
   decryptor: LegacyDecryptor,
   request: LegacyRequest,
 ): Promise<Buffer> {
-  const layout = sampleLayout(segment, request.perSampleIvSize ?? 8);
+  const layout = sampleLayout(segment, request.perSampleIvSize ?? 0);
   if (layout.samples.length === 0) {
     throw new Error("no samples found in fragment");
   }
-  // Re-arm at the fragment boundary so the service's per-fragment state matches.
-  await decryptor.armFragment(request);
-
-  const output = Buffer.from(segment);
-  const cryptBlocks = request.cryptByteBlock ?? 0;
-  const skipBlocks = request.skipByteBlock ?? 0;
-
-  /**
-   * Decrypt one protected span. cbcs encrypts `crypt` blocks then skips `skip`
-   * blocks; the wrapper only sees ciphertext, so the decrypt blocks are gathered
-   * into one run and scattered back afterwards.
-   */
-  const decryptSpan = async (span: Buffer): Promise<Buffer> => {
-    if (cryptBlocks === 0 || skipBlocks === 0) {
-      return decryptor.decrypt(span, request);
-    }
-    const cryptBytes = cryptBlocks * 16;
-    const stride = cryptBytes + skipBlocks * 16;
-    const chunks: Buffer[] = [];
-    for (let pos = 0; pos + cryptBytes <= span.length; pos += stride) {
-      chunks.push(span.subarray(pos, pos + cryptBytes));
-    }
-    if (chunks.length === 0) return span;
-    const gathered = Buffer.concat(chunks);
-    const plainGathered = await decryptor.decrypt(gathered, request);
-    const result = Buffer.from(span);
-    let read = 0;
-    for (let pos = 0; pos + cryptBytes <= span.length; pos += stride) {
-      plainGathered.copy(result, pos, read, read + cryptBytes);
-      read += cryptBytes;
-    }
-    return result;
-  };
-
   for (const sample of layout.samples) {
-    if (sample.offset + sample.size > output.length) {
+    if (sample.offset + sample.size > segment.length) {
       throw new Error("sample table points outside the fragment");
     }
-    const ciphertext = Buffer.from(segment.subarray(sample.offset, sample.offset + sample.size));
     if (sample.iv && sample.iv.length > 0) {
       // The wrapper decrypts with the key it armed and carries the constant IV
       // for the track; per-sample IVs would have to travel on the wire, which
       // this transport does not do.
       throw new Error("per-sample IV streams are not supported by the legacy transport");
     }
-    if (process.env.LIDRA_DEBUG_SUBS && sample.subsamples) {
-      const total = sample.subsamples.reduce((sum, e) => sum + e.clear + e.protected, 0);
-      if (total !== sample.size) {
-        console.warn(`[subs] sample size=${sample.size} table=${total} entries=${sample.subsamples.length}`);
-      }
+  }
+
+  // Arm at the fragment boundary: a key change needs the switch marker, and
+  // arming is a queued operation that must not run inside the decrypt batch.
+  await decryptor.armFragment(request);
+
+  const cryptBlocks = request.cryptByteBlock ?? 0;
+  const skipBlocks = request.skipByteBlock ?? 0;
+
+  /** Split one protected span into the runs the service should decrypt. */
+  const runsOf = (span: Buffer): Buffer[] => {
+    if (cryptBlocks === 0 || skipBlocks === 0) return [span];
+    const cryptBytes = cryptBlocks * 16;
+    const stride = cryptBytes + skipBlocks * 16;
+    const chunks: Buffer[] = [];
+    for (let pos = 0; pos + cryptBytes <= span.length; pos += stride) {
+      chunks.push(span.subarray(pos, pos + cryptBytes));
     }
+    return chunks;
+  };
+
+  // Gather every protected span in sample order, remembering where it belongs.
+  const plan: { target: number; span: number; run: Buffer; order: number }[] = [];
+  const runs: Buffer[] = [];
+  for (const sample of layout.samples) {
+    const spans: { start: number; length: number }[] = [];
     if (sample.subsamples && sample.subsamples.length > 0) {
       let cursor = 0;
       for (const entry of sample.subsamples) {
         cursor += entry.clear;
         if (entry.protected === 0) continue;
-        const span = ciphertext.subarray(cursor, cursor + entry.protected);
-        if (span.length !== entry.protected) {
+        if (cursor + entry.protected > sample.size) {
           throw new Error("subsample exceeds the sample buffer");
         }
-        const plainSpan = await decryptSpan(Buffer.from(span));
-        if (process.env.LIDRA_DEBUG_SUBS && sample.offset < 12000) {
-          console.warn(
-            `[sub] off=${sample.offset} size=${sample.size} clear=${entry.clear} prot=${entry.protected} enc=${span.subarray(0, 16).toString("hex")} plain=${plainSpan.subarray(0, 16).toString("hex")}`,
-          );
-        }
-        plainSpan.copy(output, sample.offset + cursor);
+        spans.push({ start: sample.offset + cursor, length: entry.protected });
         cursor += entry.protected;
       }
+    } else {
+      spans.push({ start: sample.offset, length: sample.size });
+    }
+    for (const span of spans) {
+      const piece = segment.subarray(span.start, span.start + span.length);
+      const pieces = runsOf(piece);
+      if (pieces.length === 1 && pieces[0] === piece) {
+        plan.push({ target: span.start, span: span.length, run: piece, order: runs.length });
+        runs.push(piece);
+        continue;
+      }
+      // Pattern encryption: the decrypt blocks travel as one run and are
+      // scattered back into the span afterwards.
+      const gathered = Buffer.concat(pieces);
+      plan.push({ target: span.start, span: span.length, run: gathered, order: runs.length });
+      runs.push(gathered);
+    }
+  }
+
+  const plains = await decryptor.decryptBatch(runs, request);
+  const output = Buffer.from(segment);
+  for (const entry of plan) {
+    const plain = plains[entry.order];
+    const striped = cryptBlocks !== 0 && skipBlocks !== 0 && plain.length !== entry.span;
+    if (!striped) {
+      plain.copy(output, entry.target, 0, entry.span);
       continue;
     }
-    const plain = await decryptSpan(ciphertext);
-    if (process.env.LIDRA_DEBUG_SUBS && output.length > 0 && sample.offset < 12000) {
-      console.warn(
-        `[sample] off=${sample.offset} size=${sample.size} enc=${ciphertext.subarray(0, 16).toString("hex")} plain=${plain.subarray(0, 16).toString("hex")}`,
-      );
+    const cryptBytes = cryptBlocks * 16;
+    const stride = cryptBytes + skipBlocks * 16;
+    let read = 0;
+    for (let pos = 0; pos + cryptBytes <= entry.span; pos += stride) {
+      plain.copy(output, entry.target + pos, read, read + cryptBytes);
+      read += cryptBytes;
     }
-    plain.copy(output, sample.offset);
+  }
+
+  const check = verifyFragmentPlaintext(output, layout);
+  if (!check.ok) {
+    throw new DecryptMismatchError(`decrypted fragment failed verification: ${check.reason}`);
   }
   return output;
 }

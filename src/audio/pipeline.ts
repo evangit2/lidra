@@ -34,7 +34,7 @@ import { decryptSegment } from "./mp4/segment";
 import { inspectInitSegment, verifyAgainstVariant, type QualityCheck, type StreamFacts } from "./quality";
 import { createTranscoder, type Transcoder, type AudioTransform } from "./transcode";
 import { LegacyDecryptor, fetchDeviceManifest } from "./legacy/decryptor";
-import { decryptSegmentLegacy } from "./legacy/segment";
+import { DecryptMismatchError, decryptSegmentLegacy } from "./legacy/segment";
 
 const pipelineLog = log.scope("audio.pipeline");
 
@@ -57,6 +57,12 @@ export interface PipelineOptions {
   decryptorService?: string;
   /** Wrapper manifest socket address; overrides the API's manifest when set. */
   manifestService?: string;
+  /**
+   * Restart the wrapper service. A wrapper process pins one key context per
+   * song, so a context armed before the song's keys were available yields noise;
+   * a fresh process resolves it.
+   */
+  restartDecryptor?: () => Promise<void>;
   /** How Atmos should be presented: the 5.1 bed or Apple's binaural render. */
   spatial?: SpatialMode;
   /**
@@ -416,16 +422,39 @@ export class TrackPipeline {
     if (this.effectiveMode === "wrapper") {
       const service = this.options.decryptorService?.trim();
       if (!service) throw new Error("wrapper decrypt mode needs a decryptor service address");
+      const request = {
+        adamId: this.asset.id,
+        keyUri,
+        cryptByteBlock: encryptionOf(info).cryptByteBlock,
+        skipByteBlock: encryptionOf(info).skipByteBlock,
+        perSampleIvSize: encryptionOf(info).perSampleIvSize,
+      };
       const decryptor = (this.legacy ??= new LegacyDecryptor(service));
       try {
-        return await decryptSegmentLegacy(segment, decryptor, {
-          adamId: this.asset.id,
-          keyUri,
-          cryptByteBlock: encryptionOf(info).cryptByteBlock,
-          skipByteBlock: encryptionOf(info).skipByteBlock,
-          perSampleIvSize: encryptionOf(info).perSampleIvSize,
-        });
+        return await decryptSegmentLegacy(segment, decryptor, request);
       } catch (error) {
+        // The service pins one key context per song per process, so a context
+        // that was armed before this song's keys were reachable returns noise
+        // rather than failing. A fresh process picks the right one, so this is
+        // recoverable: restart the service and try the fragment once more.
+        if (error instanceof DecryptMismatchError && this.options.restartDecryptor) {
+          pipelineLog.warn(
+            `decryptor returned unexpected plaintext (${error.message}); restarting it`,
+          );
+          this.legacy?.close();
+          this.legacy = null;
+          try {
+            await this.options.restartDecryptor();
+            const fresh = (this.legacy ??= new LegacyDecryptor(service));
+            return await decryptSegmentLegacy(segment, fresh, request);
+          } catch (retryError) {
+            pipelineLog.warn(
+              `decryptor restart did not help: ${
+                retryError instanceof Error ? retryError.message : String(retryError)
+              }`,
+            );
+          }
+        }
         // A wrapper that is configured but not running (not signed in yet, or
         // stopped) must not take playback down with it: fall back to the key
         // source, which reaches the Widevine rendition.

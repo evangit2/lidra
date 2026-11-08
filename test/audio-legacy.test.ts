@@ -1,8 +1,19 @@
 import crypto from "node:crypto";
 import net from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
-import { LegacyDecryptor, LegacyDecryptorError, fetchDeviceManifest } from "../src/audio/legacy/decryptor";
-import { decryptSegmentLegacy, sampleLayout } from "../src/audio/legacy/segment";
+import {
+  LegacyDecryptor,
+  LegacyDecryptorError,
+  armIdOf,
+  fetchDeviceManifest,
+  isPrefetchKey,
+} from "../src/audio/legacy/decryptor";
+import {
+  DecryptMismatchError,
+  decryptSegmentLegacy,
+  sampleLayout,
+  verifyFragmentPlaintext,
+} from "../src/audio/legacy/segment";
 
 const KEY = Buffer.from("00112233445566778899aabbccddeeff", "hex");
 const IV = Buffer.alloc(16, 0);
@@ -148,12 +159,20 @@ describe("wrapper decryptor transport", () => {
   it("arms the session once and decrypts every sample", async () => {
     const service = await openDecryptService();
     closers.push(service.close);
-    const plain = [crypto.randomBytes(32), crypto.randomBytes(64)];
+    // Real ALAC frames repeat their header bits, which is what the fragment
+    // verification keys on.
+    const plainFrame = (size: number): Buffer => {
+      const frame = Buffer.concat([Buffer.from([0x20, 0x00, 0x04]), crypto.randomBytes(size - 3)]);
+      return frame;
+    };
+    const plain = [plainFrame(32), plainFrame(64)];
     const fragment = buildFragment(plain.map(encrypt));
     const decryptor = new LegacyDecryptor(service.address);
 
     const output = await decryptSegmentLegacy(fragment, decryptor, {
       adamId: "1440833098",
+      // Apple's playlists open on a placeholder key, which the reference client
+      // addresses with the literal id 0.
       keyUri: "skd://itunes.apple.com/P000000000/s1/e1",
     });
     const layout = sampleLayout(output);
@@ -164,9 +183,52 @@ describe("wrapper decryptor transport", () => {
       output.subarray(layout.samples[1].offset, layout.samples[1].offset + 64).equals(plain[1]),
     ).toBe(true);
     expect(service.events.filter((event) => event.startsWith("arm:"))).toEqual([
-      "arm:1440833098:skd://itunes.apple.com/P000000000/s1/e1",
+      "arm:0:skd://itunes.apple.com/P000000000/s1/e1",
     ]);
     decryptor.close();
+  });
+
+
+  it("addresses the placeholder key with the prefetch id", () => {
+    expect(isPrefetchKey("skd://itunes.apple.com/P000000000/s1/e1")).toBe(true);
+    expect(isPrefetchKey("skd://itunes.apple.com/p1305215351/c6")).toBe(false);
+    expect(
+      armIdOf({ adamId: "268443097", keyUri: "skd://itunes.apple.com/P000000000/s1/e1" }),
+    ).toBe("0");
+    expect(armIdOf({ adamId: "268443097", keyUri: "skd://itunes.apple.com/p1305215351/c6" })).toBe(
+      "268443097",
+    );
+  });
+
+  it("sends a whole fragment as one pipelined batch", async () => {
+    const service = await openDecryptService();
+    closers.push(service.close);
+    const plain = Array.from({ length: 8 }, () =>
+      Buffer.concat([Buffer.from([0x20, 0x00, 0x04]), crypto.randomBytes(45)]),
+    );
+    const fragment = buildFragment(plain.map(encrypt));
+    const decryptor = new LegacyDecryptor(service.address);
+    const output = await decryptSegmentLegacy(fragment, decryptor, {
+      adamId: "268443097",
+      keyUri: "skd://itunes.apple.com/p1305215351/c6",
+    });
+    const layout = sampleLayout(output);
+    for (const [index, expected] of plain.entries()) {
+      const sample = layout.samples[index];
+      expect(output.subarray(sample.offset, sample.offset + sample.size).equals(expected)).toBe(true);
+    }
+    decryptor.close();
+  });
+
+  it("rejects plaintext that is not audio", () => {
+    const plain = [crypto.randomBytes(48), crypto.randomBytes(48)];
+    const fragment = buildFragment(plain.map(encrypt));
+    const layout = sampleLayout(fragment);
+    const noise = Buffer.from(fragment);
+    crypto.randomFillSync(noise, layout.samples[0].offset, 96);
+    const check = verifyFragmentPlaintext(noise, layout);
+    expect(check.ok).toBe(false);
+    expect(check.reason).toMatch(/ALAC header/);
   });
 
   it("leaves a trailing partial block in the clear", async () => {
