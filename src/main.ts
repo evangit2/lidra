@@ -81,7 +81,12 @@ import { KeyCache, createKeyProvider } from "./audio/keys";
 import { createWidevineProvider } from "./audio/widevine/provider";
 import { webPlaybackMaster } from "./audio/webplayback";
 import { WrapperService, isListening } from "./audio/wrapper/service";
-import { buildWslCommand, ensureWslRuntime, runtimeArchiveCandidates } from "./audio/wrapper/wsl";
+import {
+  buildWslCommand,
+  ensureWslRuntime,
+  isWindowsWrapperCommand,
+  runtimeArchiveCandidates,
+} from "./audio/wrapper/wsl";
 import { hostPathForWrapper, readWrapperSession, wrapperBaseDir } from "./audio/wrapper/session";
 import { dismissTwoFactorPrompt, showTwoFactorPrompt } from "./twoFactorWindow";
 import { initAudioBridge } from "./audio/bridge";
@@ -90,6 +95,7 @@ import {
   getAudioDecryptorService,
   getAudioWrapperAutostart,
   getAudioWrapperCommand,
+  setAudioWrapperCommand,
   getAudioEnabled,
   getAudioEmeShim,
   getAudioFfmpegPath,
@@ -535,7 +541,8 @@ async function prepareWindowsWrapper(
       `lossless on Windows is unavailable: ${setup.detail}` + (setup.hint ? ` — ${setup.hint}` : ""),
     );
     publishQuality({
-      label: `lossless needs the Windows subsystem: ${setup.detail}`,
+      label: "Lossless setup needed",
+      detail: setup.hint ? `${setup.detail} — ${setup.hint}` : setup.detail,
       verdict: "mismatch",
     });
     return;
@@ -546,6 +553,8 @@ async function prepareWindowsWrapper(
     manifestPort: portOf(manifestAddress, 20020),
   });
   wrapper.setCommand(activeWrapperCommand);
+  // Keep Settings honest: the field shows the command that is really in use.
+  setAudioWrapperCommand(activeWrapperCommand);
   const status = await wrapper.start();
   mainLog.info(`wrapper ${status.state}${status.detail ? ` (${status.detail})` : ""}`);
 }
@@ -638,7 +647,14 @@ function initAudioEngine(ses: Electron.Session): AudioEngine {
           (snapshot.error ? `: ${snapshot.error}` : ""),
       );
       if (snapshot.state === "error" && snapshot.error) {
-        publishQuality({ label: snapshot.error, verdict: "mismatch", requested: snapshot.variant?.tier });
+        // The pill has room for a name, not a stack of text: the message belongs
+        // in the panel that opens on click.
+        publishQuality({
+          label: "Playback needs attention",
+          detail: snapshot.error,
+          verdict: "mismatch",
+          requested: snapshot.variant?.tier,
+        });
       }
       // A cached track never re-enters "streaming"; its measured facts are just
       // as true, so publish on both transitions.
@@ -692,8 +708,11 @@ function initAudioEngine(ses: Electron.Session): AudioEngine {
     return Number.isInteger(candidate) ? candidate : fallback;
   };
   const configuredWrapperCommand = expandWrapperCommand(getAudioWrapperCommand());
+  // The package ships a Unix default for this field, so on Windows it is only
+  // usable when it names something Windows can actually start.
+  const windowsRuntime = process.platform === "win32" && !isWindowsWrapperCommand(configuredWrapperCommand);
   const wrapper = new WrapperService({
-    command: configuredWrapperCommand,
+    command: windowsRuntime ? "" : configuredWrapperCommand,
     decryptor: decryptorAddress,
     manifest: manifestAddress,
     // A Windows launch is `wsl … sh -c '…'`, so the login run rebuilds the whole
@@ -745,7 +764,7 @@ function initAudioEngine(ses: Electron.Session): AudioEngine {
   wrapperService = wrapper;
   // Windows has no FairPlay client of its own: the wrapper ships with Lidra and
   // runs inside a version 1 WSL environment (syscall translation, no VM).
-  if (process.platform === "win32" && !configuredWrapperCommand.trim()) {
+  if (windowsRuntime) {
     void prepareWindowsWrapper(wrapper, decryptorAddress, manifestAddress).catch((error) =>
       mainLog.error(`wrapper setup failed: ${errorMessage(error)}`),
     );
@@ -795,7 +814,8 @@ function initAudioEngine(ses: Electron.Session): AudioEngine {
     wrapper.stop();
     return wrapper.status();
   });
-  if (getAudioWrapperAutostart() && getAudioWrapperCommand().trim()) {
+  // The Windows runtime starts itself once its environment is ready.
+  if (!windowsRuntime && getAudioWrapperAutostart() && configuredWrapperCommand.trim()) {
     void wrapper.start();
   }
   return engine;

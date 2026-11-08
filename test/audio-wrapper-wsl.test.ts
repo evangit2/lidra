@@ -5,6 +5,7 @@ import path from "node:path";
 import { hostPathForWrapper } from "../src/audio/wrapper/session";
 import {
   buildWslCommand,
+  isWindowsWrapperCommand,
   ensureWslRuntime,
   importArguments,
   parseWslList,
@@ -282,5 +283,20 @@ describe("hostPathForWrapper", () => {
   it("leaves a native path untouched", () => {
     expect(hostPathForWrapper("/opt/lidra", "linux")).toBe("/opt/lidra");
     expect(hostPathForWrapper("C:\\wrapper", "win32")).toBe("C:\\wrapper");
+  });
+});
+
+describe("isWindowsWrapperCommand", () => {
+  it("rejects the Unix default the package ships with", () => {
+    expect(isWindowsWrapperCommand("~/.lidra-wrapper/wrapper -D 10020 -M 20020")).toBe(false);
+    expect(isWindowsWrapperCommand("/opt/lidra/wrapper -D 10020")).toBe(false);
+    expect(isWindowsWrapperCommand("")).toBe(false);
+  });
+
+  it("accepts commands Windows can actually start", () => {
+    expect(isWindowsWrapperCommand("C:\\Users\\mushy\\wrapper.exe -D 10020")).toBe(true);
+    expect(isWindowsWrapperCommand("wsl.exe -d LidraWrapper -u root -- /bin/sh -c 'x'")).toBe(true);
+    expect(isWindowsWrapperCommand("wsl -d LidraWrapper")).toBe(true);
+    expect(isWindowsWrapperCommand("\\\\wsl$\\LidraWrapper\\opt\\lidra\\wrapper")).toBe(true);
   });
 });

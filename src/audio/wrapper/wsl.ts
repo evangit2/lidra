@@ -57,6 +57,23 @@ export function parseWslList(raw: string): WslDistro[] {
   return rows;
 }
 
+/**
+ * Whether a configured wrapper command can actually run on Windows.
+ *
+ * The package ships a Unix default (`~/.lidra-wrapper/wrapper …`), so a Windows
+ * user who never edited the field must not be treated as having configured a
+ * working command — that path cannot execute, and pretending otherwise skipped
+ * the whole runtime setup.
+ */
+export function isWindowsWrapperCommand(command: string): boolean {
+  const trimmed = command.trim();
+  if (!trimmed) return false;
+  if (/^wsl(\.exe)?\b/i.test(trimmed)) return true;
+  if (/^[A-Za-z]:[\\/]/.test(trimmed)) return true;
+  if (/\\\\wsl\$[\\/]/i.test(trimmed)) return true;
+  return /\.exe\b/i.test(trimmed);
+}
+
 /** Windows path to the path the imported distro sees (`C:\x` -> `/mnt/c/x`). */
 export function toWslPath(windowsPath: string): string {
   const normalized = windowsPath.replace(/\\/g, "/");

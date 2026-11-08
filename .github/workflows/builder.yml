@@ -174,11 +174,11 @@ jobs:
           - os: linux
             arch: amd64
             runner: ubuntu-24.04
-            targets: "--linux AppImage deb rpm flatpak"
+            targets: "--linux AppImage deb rpm"
           - os: linux
             arch: arm64
             runner: ubuntu-24.04-arm
-            targets: "--linux AppImage deb rpm flatpak --arm64"
+            targets: "--linux AppImage deb rpm --arm64"
           # One arch per runner: the bundled ffmpeg is a host-architecture
           # binary, so building x64 on an arm64 runner would ship the wrong one.
           # macos-13 is retired; the Intel images are macos-15-intel and
@@ -223,9 +223,9 @@ jobs:
         if: matrix.os == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y librsvg2-bin rpm flatpak flatpak-builder appstream
+          sudo apt-get install -y librsvg2-bin rpm
       - name: Install Flatpak build runtimes
-        if: matrix.os == 'linux'
+        if: matrix.os == 'linux' && contains(matrix.targets, 'flatpak')
         run: |
           flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
           runtime_version=$(node -p 'require("./package.json").build.flatpak.runtimeVersion')
@@ -238,7 +238,7 @@ jobs:
       # check packaging, and publish-snap requires this build to pass.
       # Each Linux architecture needs a separate Snap Store revision.
       - name: Install snapcraft
-        if: matrix.os == 'linux' && github.event_name != 'pull_request'
+        if: contains(matrix.targets, 'snap')
         run: sudo snap install snapcraft --classic
       - name: Compile TypeScript
         run: npm run build
@@ -256,7 +256,7 @@ jobs:
         run: node scripts/verify-packaged-ffmpeg.cjs
 
       - name: Validate Flatpak AppStream metadata
-        if: matrix.os == 'linux'
+        if: matrix.os == 'linux' && contains(matrix.targets, 'flatpak')
         run: appstreamcli validate --no-net release/metainfo/*.metainfo.xml
       - name: Check RPM build-ID links
         if: matrix.os == 'linux'
@@ -279,7 +279,7 @@ jobs:
       # Snapcraft host mode needs root, so this cannot join the step above:
       # that would run every Linux target as root.
       - name: Build snap
-        if: matrix.os == 'linux' && github.event_name != 'pull_request'
+        if: contains(matrix.targets, 'snap')
         run: |
           node scripts/patch-snap-desktop.cjs
           sudo env "PATH=$PATH" SNAPCRAFT_BUILD_ENVIRONMENT=host npx electron-builder --publish never --linux snap

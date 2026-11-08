@@ -93,7 +93,13 @@ export function initAudioBridge(options: AudioBridgeOptions): void {
   ipcMain.on("nowPlayingItemDidChange", (_event, payload: unknown) => {
     const appleId = catalogIdFromPayload(payload);
     if (!appleId) {
-      // Radio and other non-catalog items keep the page's own playback path.
+      // Radio, library-only items and anything else without a catalog id keep
+      // the page's own playback path. Log what arrived so a silent track can be
+      // traced back to the payload that caused it.
+      const playParams = (payload as { playParams?: Record<string, unknown> } | null)?.playParams;
+      bridgeLog.info(
+        `no catalog id in now-playing payload: ${JSON.stringify(playParams ?? {}).slice(0, 200)}`,
+      );
       engine.markCurrent(null);
       return;
     }

@@ -189,10 +189,13 @@ describe("stock Electron build gates", () => {
     expect(builderWorkflow).toContain("LIDRA_LASTFM_API_KEY");
     expect(builderWorkflow).toContain("LIDRA_LASTFM_API_SECRET");
     expect(builderWorkflow).toContain("RELEASE_ARTEFACTS");
-    // Keep platform matrix.
-    expect(builderWorkflow).toContain("--linux AppImage deb rpm flatpak");
+    // Keep the platform matrix, with the slow packagers gated behind their
+    // own matrix target so a tagged release finishes in minutes.
+    expect(builderWorkflow).toContain("--linux AppImage deb rpm");
     expect(builderWorkflow).toContain("--mac dmg");
     expect(builderWorkflow).toContain("--win nsis");
+    expect(builderWorkflow).toContain("contains(matrix.targets, 'flatpak')");
+    expect(builderWorkflow).toContain("contains(matrix.targets, 'snap')");
   });
 
   it("validate-build-config passes for the stock-Electron layout", () => {

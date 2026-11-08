@@ -108,6 +108,9 @@ export class AudioEngine {
   markCurrent(appleId: string | null): void {
     this.currentAppleId = appleId;
     this.redirectPending = appleId !== null;
+    // A failure belongs to the track that caused it; leaving it set made every
+    // later track look failed while its preparation was still spinning up.
+    this.lastError = undefined;
     if (appleId) void this.prepare(appleId).catch((error) => this.fail(error));
   }
 
@@ -148,11 +151,19 @@ export class AudioEngine {
    * flight, instead of after the whole file has downloaded.
    */
   async waitForCurrent(timeoutMs = 25_000): Promise<string | null> {
-    const deadline = Date.now() + timeoutMs;
+    const started = Date.now();
+    const deadline = started + timeoutMs;
     while (Date.now() < deadline) {
       const url = this.masterUrlForCurrent();
       if (url) return url;
       if (this.lastError && this.preparation === null) return null;
+      // Nothing is being prepared for this item (a library-only id, or the hook
+      // never fired). Holding the player's own request for the full timeout is
+      // what made library and playlist tracks sit silent.
+      if (!this.preparation && Date.now() - started > 1_500) {
+        engineLog.info("nothing to prepare for the current item; leaving playback to the player");
+        return null;
+      }
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
     engineLog.warn("timed out waiting for the current track");
@@ -214,8 +225,13 @@ export class AudioEngine {
     })();
 
     this.preparation = task.then(
-      () => undefined,
+      () => {
+        this.preparation = null;
+      },
       (error) => {
+        // Clear first: waiters use "no preparation in flight" to decide whether
+        // the player should be left alone.
+        this.preparation = null;
         this.fail(error);
       },
     );

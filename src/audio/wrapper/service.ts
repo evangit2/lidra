@@ -239,12 +239,15 @@ export class WrapperService {
     }
     this.child = child;
 
+    /** Last line the wrapper printed, kept for the failure message. */
+    let lastLine = "";
     const note = (chunk: Buffer): void => {
       const text = chunk.toString();
       for (const line of text.split("\n")) {
         const trimmed = line.trim();
         if (!trimmed) continue;
-        this.detail = trimmed.slice(0, 200);
+        lastLine = trimmed.slice(0, 200);
+        this.detail = lastLine;
         if (/2fa|two-factor|verification code/i.test(trimmed)) {
           if (!this.codePrompted) {
             this.codePrompted = true;
@@ -262,9 +265,12 @@ export class WrapperService {
     child.stderr?.on("data", note);
     child.once("exit", (code, signal) => {
       if (this.child === child) this.child = null;
-      if (this.state !== "stopped") {
-        this.setState(code === 0 ? "stopped" : "error", `exited ${code ?? signal ?? "?"}`);
-      }
+      if (this.state === "stopped") return;
+      // "exited 4294967295" tells the user nothing; the wrapper's own last line
+      // usually names the real problem (missing path, no environment, bad login).
+      const reason = code === 0 ? "" : `exited ${code ?? signal ?? "?"}`;
+      const detail = lastLine ? `${reason}: ${lastLine}`.replace(/^: /, "") : reason;
+      this.setState(code === 0 ? "stopped" : "error", detail || "exited");
     });
 
     const probe = this.options.probe ?? ((address: string) => probeTcp(address));
