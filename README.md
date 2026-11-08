@@ -20,6 +20,13 @@ Lidra wraps `music.apple.com` directly: Apple owns the interface and keeps it cu
 
 Lidra keeps Sidra's interface, sign-in, theming and integrations, and replaces the playback stack underneath them.
 
+How it works, simply: you press play, Lidra asks Apple for that song's list of
+quality options and picks the best one you allowed, downloads the song in small
+encrypted pieces, unlocks each piece with keys from your own signed-in session,
+converts anything the browser can't play into a form it can, and hands the pieces
+to the page's own player from an address on your machine. Queue, seeking and the
+player bar work exactly as before — only where the bytes come from changes.
+
 - **No Chromium DRM.** Stock Electron: no Widevine CDM, no EVS/VMP signing. The page's player is satisfied by a loopback HLS playlist instead of a protected CDN stream.
 - **Quality comes from the master manifest**, not from what the web player is offered: hi-res ALAC (up to 24-bit/192 kHz), ALAC lossless, Dolby Atmos (E-AC-3), Dolby Audio (AC-3) and AAC. Lidra asks the Apple Music API for `extendedAssetUrls.enhancedHls` with the session you signed in with (or the wrapper manifest socket when the API omits the master), ranks every rendition and plays the best one your preference allows. Every lossless and Atmos rendition serves FairPlay (`skd://`) keys only, so without a wrapper or key service the pipeline falls back to the Widevine-keyed 256 kbps web-playback asset rather than failing silently.
 - **Fragments are decrypted and muxed as they arrive.** Nothing waits for a full download: the player's manifest request is held (up to ~20 s) until the first muxed HLS segment (~2 s of audio) is on disk, so playback typically starts a few seconds after the click, not after a 100 MB+ download.
@@ -35,17 +42,13 @@ to reproduce them: [docs/QUALITY.md](docs/QUALITY.md) — 22 of 22 renditions ac
 hi-res, lossless, Atmos and AAC matched their claim at the init level; full
 decrypt-to-audible playback is verified on Linux (see below).
 
-| Source | Delivered as | Needs ffmpeg | Key path that opens it |
-| --- | --- | --- | --- |
-| AAC-LC / HE-AAC | stream copy (fMP4) | no | any (Widevine device reaches this tier) |
-| ALAC lossless / hi-res | FLAC in fragmented MP4 (bit-exact) | yes | wrapper or key service (Widevine alone falls back to AAC) |
-| Dolby Atmos bed (E-AC-3) | 5.1 FLAC core (no height objects) | yes | wrapper or key service (Widevine alone falls back to AAC) |
-| Binaural spatial render (separate AAC rendition) | stream copy stereo | no | any, only when quality is `atmos` + `LIDRA_SPATIAL=binaural` |
-| Dolby Audio (AC-3) | FLAC, 5.1 preserved | yes | same code path as Atmos; no live AC-3 master measured yet |
-
-`ffmpeg-static` is bundled for Linux, macOS and Windows and unpacked next to the
-app, so lossless and Dolby playback work on a machine with no ffmpeg installed.
-`LIDRA_FFMPEG` still overrides it, and `PATH` is the last resort.
+| Source | Delivered as | Key path that opens it |
+| --- | --- | --- |
+| AAC-LC / HE-AAC | stream copy (fMP4) | any (Widevine device reaches this tier) |
+| ALAC lossless / hi-res | FLAC in fragmented MP4 (bit-exact) | wrapper or key service (Widevine alone falls back to AAC) |
+| Dolby Atmos bed (E-AC-3) | 5.1 FLAC core (no height objects) | wrapper or key service (Widevine alone falls back to AAC) |
+| Binaural spatial render (separate AAC rendition) | stream copy stereo | any, only when quality is `atmos` + `LIDRA_SPATIAL=binaural` |
+| Dolby Audio (AC-3) | FLAC, 5.1 preserved | same code path as Atmos; no live AC-3 master measured yet |
 
 Configuration lives in the Audio section of Settings or the environment:
 
