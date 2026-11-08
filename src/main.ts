@@ -79,6 +79,7 @@ import { KeyCache, createKeyProvider } from "./audio/keys";
 import { createWidevineProvider } from "./audio/widevine/provider";
 import { webPlaybackMaster } from "./audio/webplayback";
 import { WrapperService } from "./audio/wrapper/service";
+import { readWrapperSession, wrapperBaseDir } from "./audio/wrapper/session";
 import { initAudioBridge } from "./audio/bridge";
 import { findFfmpeg } from "./audio/transcode";
 import {
@@ -599,7 +600,20 @@ function initAudioEngine(ses: Electron.Session): AudioEngine {
     command: expandWrapperCommand(getAudioWrapperCommand()),
     decryptor: getAudioDecryptorService() || "127.0.0.1:10020",
     manifest: getAudioManifestService() || "127.0.0.1:20020",
-    onChange: (status) => mainLog.info(`wrapper ${status.state}${status.detail ? ` (${status.detail})` : ""}`),
+    onChange: (status) => {
+      mainLog.info(`wrapper ${status.state}${status.detail ? ` (${status.detail})` : ""}`);
+      if (status.state !== "running") return;
+      const ses = session.fromPartition("persist:lidra");
+      void applyWrapperSession(ses).then((applied) => {
+        if (!applied) return;
+        // The player is showing a signed-out shell; its own session is now valid.
+        for (const window of BrowserWindow.getAllWindows()) {
+          if (!window.isDestroyed() && window.webContents.getURL().includes("music.apple.com")) {
+            window.webContents.reload();
+          }
+        }
+      });
+    },
   });
   wrapperService = wrapper;
   ipcMain.handle("lidra:wrapper-status", () => wrapper.status());
@@ -703,6 +717,41 @@ function loadAssets(): Assets {
   };
 }
 
+
+/**
+ * Adopt the wrapper's store-services session for the web player.
+ *
+ * A media-user-token is what music.apple.com uses for a signed-in session, so a
+ * single Apple ID entry (the wrapper's) is enough for both the audio pipeline and
+ * the UI. Returns true when a cookie was written.
+ */
+async function applyWrapperSession(ses: Electron.Session): Promise<boolean> {
+  const state = readWrapperSession(wrapperBaseDir(getAudioWrapperCommand()));
+  if (!state) return false;
+  const existing = await ses.cookies.get({ name: "media-user-token", domain: "music.apple.com" });
+  if (existing.some((cookie) => cookie.value === state.mediaUserToken)) return false;
+  await ses.cookies.set({
+    url: "https://music.apple.com/",
+    name: "media-user-token",
+    value: state.mediaUserToken,
+    secure: true,
+    httpOnly: false,
+    sameSite: "no_restriction",
+    expirationDate: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 180,
+  });
+  await ses.cookies.set({
+    url: "https://beta.music.apple.com/",
+    name: "media-user-token",
+    value: state.mediaUserToken,
+    secure: true,
+    httpOnly: false,
+    sameSite: "no_restriction",
+    expirationDate: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 180,
+  });
+  mainLog.info("web session adopted from the wrapper's sign-in");
+  return true;
+}
+
 function createMainWindow(ses: Electron.Session): {
   win: BrowserWindow;
   winReady: Promise<void>;
@@ -723,6 +772,12 @@ function createMainWindow(ses: Electron.Session): {
       plugins: true,
       sandbox: true,
     },
+  });
+
+  // The wrapper may already hold a session (it survives restarts); adopting it
+  // before the first load means the player comes up signed in on its own.
+  void applyWrapperSession(ses).catch((error) => {
+    mainLog.warn(`could not adopt the wrapper session: ${errorMessage(error)}`);
   });
 
   // did-finish-load fires while Apple Music is still an empty shell, so the
