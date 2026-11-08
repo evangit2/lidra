@@ -249,6 +249,9 @@ optional `Authorization: Bearer $LIDRA_KEY_TOKEN`.
 
 ### Wrapper decrypt socket (`LIDRA_DECRYPTOR`)
 
+How the wrapper itself works — session, wire protocol, the key-context quirk —
+is documented in [WRAPPER.md](WRAPPER.md).
+
 Compatibility with the wrapper-style decryptor used by the reference downloader.
 Set it in Settings → Audio → *Wrapper decrypt socket* (`host:port`), and
 optionally *Wrapper manifest socket* for a wrapper that serves the playlist
