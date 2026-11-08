@@ -182,7 +182,15 @@
         'input#char0',
       ]),
     });
+    // The main process polls __lidraAuthCapture (console messages from a
+    // cross-origin frame are not reliably delivered), so the value is the
+    // channel; the console line stays for frame-local debugging.
     const report = (kind, payload) => {
+      try {
+        window.__lidraAuthCapture = { kind: kind, payload: payload, seq: Date.now() };
+      } catch (_) {
+        /* the frame is gone */
+      }
       try {
         console.info('[lidra] auth-' + kind + ':' + JSON.stringify(payload));
       } catch (_) {

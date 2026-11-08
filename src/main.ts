@@ -905,6 +905,8 @@ const AUTH_CODE_PREFIX = "[lidra] auth-code:";
  */
 let pendingAuth: { email: string; password: string } | null = null;
 let wrapperSignInStarted = false;
+/** Waits for a 2FA code before starting the wrapper's login run. */
+let wrapperCodeTimer: ReturnType<typeof setTimeout> | null = null;
 
 async function forwardAuthToWrapper(email: string, password: string, code?: string): Promise<void> {
   if (!email || !password || wrapperSignInStarted || !wrapperService) return;
@@ -923,6 +925,37 @@ async function forwardAuthToWrapper(email: string, password: string, code?: stri
 // assets/authFrameFix.js hides the passkey and "Sign in with iPhone" routes in
 // Apple's sign-in iframe, and reports what it hid back over console-message,
 // which is the only channel out of a frame the main process has not preloaded.
+/**
+ * A credential or 2FA code captured from Apple's sign-in frame. The wrapper's
+ * login is a one-shot CLI run, so it is started once, after the code (if any)
+ * has arrived.
+ */
+function handleAuthCapture(isCreds: boolean, value: unknown): void {
+  const payload = (value ?? {}) as { email?: string; password?: string; code?: string };
+  if (isCreds) {
+    pendingAuth = { email: String(payload.email ?? ""), password: String(payload.password ?? "") };
+    if (payload.code) {
+      void forwardAuthToWrapper(pendingAuth.email, pendingAuth.password, payload.code);
+    } else if (!wrapperCodeTimer) {
+      // Apple may ask for a code on the next screen; give it a moment so the
+      // wrapper's login does not have to be run twice.
+      wrapperCodeTimer = setTimeout(() => {
+        wrapperCodeTimer = null;
+        if (pendingAuth && !wrapperSignInStarted) {
+          void forwardAuthToWrapper(pendingAuth.email, pendingAuth.password);
+        }
+      }, 25_000);
+    }
+    return;
+  }
+  if (!pendingAuth || !payload.code || wrapperSignInStarted) return;
+  if (wrapperCodeTimer) {
+    clearTimeout(wrapperCodeTimer);
+    wrapperCodeTimer = null;
+  }
+  void forwardAuthToWrapper(pendingAuth.email, pendingAuth.password, payload.code);
+}
+
 function setupAuthFrameInjection(win: BrowserWindow, script: string): void {
   const authLog = log.scope("auth-frame");
 
@@ -951,19 +984,48 @@ function setupAuthFrameInjection(win: BrowserWindow, script: string): void {
     },
   );
 
+  // Console messages from a cross-origin frame are not reliably delivered, so the
+  // frame publishes its capture on a global and the main process reads it.
+  const handledCaptures = new Set<number>();
+  const capturePoll = setInterval(() => {
+    let frames: Electron.WebFrameMain[] = [];
+    try {
+      frames = win.webContents.mainFrame.framesInSubtree;
+    } catch {
+      return;
+    }
+    for (const frame of frames) {
+      let host: string;
+      try {
+        host = new URL(frame.url).hostname;
+      } catch {
+        continue;
+      }
+      if (!AUTH_FRAME_HOSTS.has(host)) continue;
+      frame
+        .executeJavaScript("window.__lidraAuthCapture || null")
+        .then((captured: unknown) => {
+          if (!captured || typeof captured !== "object") return;
+          const { kind, payload, seq } = captured as { kind?: string; payload?: unknown; seq?: number };
+          if (!seq || handledCaptures.has(seq)) return;
+          handledCaptures.add(seq);
+          if (handledCaptures.size > 50) handledCaptures.clear();
+          handleAuthCapture(kind === "creds", payload);
+        })
+        .catch(() => {
+          /* frame navigated away */
+        });
+    }
+  }, 1_200);
+  win.on("closed", () => clearInterval(capturePoll));
+
   win.webContents.on("console-message", (event) => {
     // Credential events from Apple's sign-in frame: handle first, never log.
     if (event.message.startsWith(AUTH_CREDS_PREFIX) || event.message.startsWith(AUTH_CODE_PREFIX)) {
       const isCreds = event.message.startsWith(AUTH_CREDS_PREFIX);
       const raw = event.message.slice((isCreds ? AUTH_CREDS_PREFIX : AUTH_CODE_PREFIX).length);
       try {
-        const value = JSON.parse(raw) as { email?: string; password?: string; code?: string };
-        if (isCreds) {
-          pendingAuth = { email: String(value.email ?? ""), password: String(value.password ?? "") };
-          if (value.code) void forwardAuthToWrapper(pendingAuth.email, pendingAuth.password, value.code);
-        } else if (pendingAuth && value.code) {
-          void forwardAuthToWrapper(pendingAuth.email, pendingAuth.password, value.code);
-        }
+        handleAuthCapture(isCreds, JSON.parse(raw));
       } catch {
         authLog.warn("could not parse captured credentials");
       }
