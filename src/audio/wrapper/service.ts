@@ -85,6 +85,8 @@ export class WrapperService {
   private detail = "";
   /** Command used for the one-shot login run, when one is in flight. */
   private loginOverride: string | null = null;
+  /** Longer deadline while an interactive login runs (auth + lease). */
+  private loginTimeoutMs: number | null = null;
   private readonly options: Required<Pick<WrapperServiceOptions, "command" | "decryptor" | "manifest">> &
     WrapperServiceOptions;
 
@@ -151,7 +153,9 @@ export class WrapperService {
     });
 
     const probe = this.options.probe ?? ((address: string) => probeTcp(address));
-    const deadline = Date.now() + (this.options.startTimeoutMs ?? 20_000);
+    const deadline =
+      Date.now() +
+      (this.loginTimeoutMs ?? this.options.startTimeoutMs ?? 20_000);
     while (Date.now() < deadline) {
       if (!this.child) break;
       if (await probe(this.options.decryptor)) {
@@ -177,10 +181,13 @@ export class WrapperService {
     const quote = (value: string): string => `'${value.replace(/'/g, `'\\''`)}'`;
     const loginCommand = `${this.options.command} -L ${quote(`${email}:${password}`)} -F`;
     this.loginOverride = loginCommand;
+    // Signing in reaches Apple before any socket opens, so allow for it.
+    this.loginTimeoutMs = 120_000;
     try {
       return await this.start();
     } finally {
       this.loginOverride = null;
+      this.loginTimeoutMs = null;
     }
   }
 
