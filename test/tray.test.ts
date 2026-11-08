@@ -35,6 +35,15 @@ vi.mock("../src/config", () => ({
     id === "classical" ? getClassicalStartPage() : "new",
   ),
   setClassicalStartPage: vi.fn(),
+  getAudioEnabled: vi.fn(() => true),
+  setAudioEnabled: vi.fn(),
+  getAudioQuality: vi.fn(() => "auto"),
+  setAudioQuality: vi.fn(),
+  getAudioSpatial: vi.fn(() => "bed"),
+  setAudioSpatial: vi.fn(),
+  getAudioWidevineDevice: vi.fn(() => null),
+  setAudioWidevineDevice: vi.fn(),
+  getAudioFfmpegPath: vi.fn(() => null),
 }));
 
 const mockTrayStrings: TrayStrings = {
@@ -83,6 +92,22 @@ const mockTrayStrings: TrayStrings = {
   hideWindow: "Hide Lidra",
   showWindow: "Show Lidra",
   closeToTray: "Close to tray",
+  audio: "Audio",
+  audioEnabled: "Native lossless pipeline",
+  audioQuality: "Quality",
+  audioSpatial: "Atmos presentation",
+  audioDevice: "CDM device",
+  audioDeviceHint: "Path to a .wvd file…",
+  audioFfmpegReady: "ffmpeg: ready",
+  audioFfmpegMissing: "ffmpeg: missing",
+  qualityAuto: "Automatic",
+  qualityHiRes: "Hi-res lossless",
+  qualityLossless: "Lossless",
+  qualityAtmos: "Dolby Atmos",
+  qualityDolby: "Dolby Audio",
+  qualityAac: "AAC",
+  spatialBed: "5.1 bed",
+  spatialBinaural: "Binaural spatial",
 };
 
 // Expected menu label per registry page id. Typed over the union, so a new page
