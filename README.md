@@ -97,9 +97,10 @@ is legally permissible.
 
 What Lidra does to stay narrow:
 
-- It ships no key-extraction tooling and bundles no device credentials. Every
-  key source — wrapper session, key service, CDM device blob — is one **you**
-  supply and are entitled to use.
+- The Windows installer bundles the wrapper runtime it decrypts with; on Linux
+  and macOS every key source — wrapper session, key service, CDM device blob —
+  is one **you** supply and are entitled to use. It ships no key-extraction
+  tooling and bundles no device credentials on any platform.
 - Decrypted audio is played in real time and written only to the local playback
   cache (to avoid re-decrypting replays). There is no export, download, or
   sharing feature.
