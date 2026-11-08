@@ -173,7 +173,7 @@ export class UnconfiguredKeyProvider implements KeyProvider {
 
   async getKey(): Promise<Buffer> {
     throw new KeyError(
-      "no key service configured: set Audio → Key service in Settings",
+      "no key source configured: set LIDRA_WIDEVINE_DEVICE to a CDM device blob, or a key service via LIDRA_KEY_SERVICE",
     );
   }
 }

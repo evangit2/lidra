@@ -121,7 +121,7 @@ describe("key service transports", () => {
     const provider = createKeyProvider({ transport: "socket", address: "" });
     expect(provider).toBeInstanceOf(UnconfiguredKeyProvider);
     await expect(provider.getKey({ adamId: "1", keyUri: "skd://a" })).rejects.toThrow(
-      /no key service configured/,
+      /no key source configured/,
     );
   });
 });

@@ -1,7 +1,7 @@
 {
   "name": "lidra",
   "productName": "Lidra",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Lidra — an elegant Apple Music desktop client with a native high-quality audio pipeline, forked from Lidra.",
   "main": "dist/main.js",
   "scripts": {
@@ -125,7 +125,8 @@
             "Exec": "dbus-send --print-reply --dest=org.mpris.MediaPlayer2.lidra /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.Stop"
           }
         }
-      }
+      },
+      "syncDesktopName": true
     },
     "protocols": [
       {
@@ -246,5 +247,6 @@
       "allowToChangeInstallationDirectory": true,
       "deleteAppDataOnUninstall": false
     }
-  }
+  },
+  "desktopName": "lidra.desktop"
 }

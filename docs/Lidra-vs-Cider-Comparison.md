@@ -112,11 +112,15 @@ Lidra adds no `AudioContext`, DSP or audio rerouting. Audio uses Apple's web pla
 | Capability | Lidra | Cider |
 |---|---|---|
 | AAC 256 kbps | Yes (all platforms) | Yes (all platforms) |
-| ALAC lossless (16/44.1, 16/48) | Native audio pipeline, no Chromium DRM | Vendor claims, current platform coverage not independently verified |
-| ALAC hi-res lossless (24/96, 24/192) | Limited by the web player and Chromium DRM path | Current formats, rates and platform coverage unverified |
-| Dolby Atmos / Spatial Audio | Not supported by Lidra's web playback path | Cider 4 documents Atmos/spatial audio assets, playback and platform coverage not independently verified |
+| ALAC lossless (16/44.1, 16/48) | Yes — native pipeline, no Chromium DRM. Measured from the stream: 16-bit/44.1 and 24-bit/48 ALAC verified | Vendor claims, current platform coverage not independently verified |
+| ALAC hi-res lossless (24/96, 24/192) | Yes — 24-bit/192 kHz ALAC measured at 9216 kbps from the stream's own codec configuration | Current formats, rates and platform coverage unverified |
+| Dolby Atmos / Spatial Audio | Yes — Atmos renditions play as 5.1 FLAC (E-AC-3 core measured at 48 kHz, 768 kbps, 6 channels); channel layout is preserved and spatial rendering is left to the OS/device | Cider 4 documents Atmos/spatial audio assets, playback and platform coverage not independently verified |
 
-**Important context:** Cider v1's stereo spatial effect does not describe Cider 4's documented Atmos work. Cider 4 replaced MusicKit.js, so Lidra's web playback limits cannot establish Cider 4's format or DRM limits. Confirm the required format on your platform before purchase.
+**Important context:** Cider v1's stereo spatial effect does not describe Cider 4's documented Atmos work. Cider 4 replaced MusicKit.js, so Lidra's playback path cannot establish Cider 4's format or DRM limits. Confirm the required format on your platform before purchase.
+
+Lidra's figures above are measurements of live streams, not vendor claims: the
+initialisation segment of each rendition is inspected before playback and the
+codec configuration is read directly. See [QUALITY.md](QUALITY.md).
 
 ### Audio pipeline
 
@@ -251,8 +255,8 @@ The previous comparison reported zero findings from Semgrep, Gitleaks and OSV-Sc
 | Equaliser | No | Yes (parametric EQ) |
 | Audio normalisation | No Lidra-added normalisation | Cider 4 documents LUFS normalisation |
 | CAP audio processor | No | Historical CAP analysis above, current implementation unverified |
-| Spatial audio / Atmos | No | Cider 4 documents Atmos/spatial assets, see audio caveat above |
-| Lossless (macOS/Windows) | Native audio pipeline, no Chromium DRM | Vendor claims, platform coverage not independently verified |
+| Spatial audio / Atmos | Atmos renditions play as 5.1 FLAC; spatial rendering is the OS/device's job | Cider 4 documents Atmos/spatial assets, see audio caveat above |
+| Lossless (all platforms) | Native audio pipeline, no Chromium DRM, up to 24-bit/192 kHz measured | Vendor claims, platform coverage not independently verified |
 | **Interface** | | |
 | UI | Apple's `music.apple.com` and `classical.music.apple.com`, with Lidra additions | Custom UI, Vue.js documented in earlier versions |
 | Themes | Apple Music default, eight bundled themes and one JSON-based Custom Theme. Colours apply to both services and Settings | Extensive theming system |

@@ -76,6 +76,7 @@ import { CredentialStore } from "./audio/tokens";
 import { KeyCache, createKeyProvider } from "./audio/keys";
 import { createWidevineProvider } from "./audio/widevine/provider";
 import { initAudioBridge } from "./audio/bridge";
+import { findFfmpeg } from "./audio/transcode";
 import {
   getAudioDecryptorService,
   getAudioEnabled,
@@ -469,7 +470,22 @@ function initAudioEngine(ses: Electron.Session): AudioEngine {
         token: getAudioKeyToken() ?? undefined,
       }),
   );
-  mainLog.info(`audio key source: ${widevine ? "widevine licence" : keyCache.providerName}`);
+  const ffmpegPath = findFfmpeg(getAudioFfmpegPath() ?? undefined);
+  if (ffmpegPath) {
+    mainLog.info(`audio ffmpeg: ${ffmpegPath}`);
+  } else {
+    mainLog.error(
+      "no ffmpeg available: lossless and Dolby playback will fail. Install ffmpeg or set LIDRA_FFMPEG.",
+    );
+  }
+  const keySource = widevine ? "widevine licence" : keyCache.providerName;
+  mainLog.info(`audio key source: ${keySource}`);
+  if (keySource === "unconfigured" && getAudioEnabled()) {
+    const message =
+      "no audio key source configured: set LIDRA_WIDEVINE_DEVICE (a CDM device blob) " +
+      "or LIDRA_KEY_SERVICE. Playback will not start until one is available.";
+    mainLog.error(message);
+  }
   const engine = new AudioEngine({
     credentials,
     keyCache,
@@ -479,7 +495,7 @@ function initAudioEngine(ses: Electron.Session): AudioEngine {
       const quality = getAudioQuality();
       return quality === "auto" ? null : quality;
     },
-    ffmpegPath: getAudioFfmpegPath() ?? undefined,
+    ffmpegPath: ffmpegPath ?? undefined,
     decryptMode: getAudioDecryptorService().trim() ? "wrapper" : "key",
     decryptorService: getAudioDecryptorService(),
     manifestService: getAudioManifestService(),
@@ -490,6 +506,9 @@ function initAudioEngine(ses: Electron.Session): AudioEngine {
           (snapshot.check ? ` -> ${snapshot.check.label}` : "") +
           (snapshot.error ? `: ${snapshot.error}` : ""),
       );
+      if (snapshot.state === "error" && snapshot.error) {
+        publishQuality({ label: snapshot.error, verdict: "mismatch", requested: snapshot.variant?.tier });
+      }
       if (snapshot.state === "streaming" && snapshot.check) {
         publishQuality({
           label:

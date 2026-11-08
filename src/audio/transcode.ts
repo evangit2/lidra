@@ -13,7 +13,7 @@
  * Lidra serves to the page: the first two seconds exist long before the track
  * has finished downloading.
  */
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import log from "electron-log/main";
@@ -65,7 +65,17 @@ function bundledFfmpeg(): string | null {
     const executable = resolved.includes("app.asar")
       ? resolved.replace("app.asar", "app.asar.unpacked")
       : resolved;
-    fs.accessSync(executable, fs.constants.X_OK);
+    if (!fs.existsSync(executable)) return null;
+    // Verify it actually runs: a binary built for another architecture exists on
+    // disk but fails to execute, and a silent failure here would look like a
+    // codec problem later. Fall through to PATH in that case.
+    const probe = spawnSync(executable, ["-version"], { timeout: 5000 });
+    if (probe.error || probe.status !== 0) {
+      transcodeLog.warn(
+        `bundled ffmpeg is unusable (${probe.error?.message ?? `exit ${probe.status}`})`,
+      );
+      return null;
+    }
     return executable;
   } catch {
     return null;

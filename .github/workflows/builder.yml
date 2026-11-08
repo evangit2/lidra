@@ -179,10 +179,16 @@ jobs:
             arch: arm64
             runner: ubuntu-24.04-arm
             targets: "--linux AppImage deb rpm flatpak --arm64"
+          # One arch per runner: the bundled ffmpeg is a host-architecture
+          # binary, so building x64 on an arm64 runner would ship the wrong one.
           - os: macos
-            arch: universal
+            arch: x64
+            runner: macos-13
+            targets: "--mac dmg --x64"
+          - os: macos
+            arch: arm64
             runner: macos-latest
-            targets: "--mac dmg --x64 --arm64"
+            targets: "--mac dmg --arm64"
           - os: windows
             arch: amd64
             runner: windows-latest

@@ -108,6 +108,24 @@ declaration that every decryption or playback technique is legally permissible.
 - 🪟 Windows: GSMTC flyout, taskbar toolbar and progress
 - 🔄 Auto-update on AppImage/Windows; release-page notifications elsewhere
 
+## Releases
+
+| Platform | Artefacts |
+| --- | --- |
+| Linux | AppImage, deb, rpm, Flatpak, Snap — x64 and arm64 |
+| macOS | dmg — x64 and arm64 (Apple silicon), hardened runtime, no VMP signing |
+| Windows | NSIS installer — x64 |
+
+Builds run in CI from `.github/workflows/builder.yml` on tag `*.*.*`, with the
+version gate requiring `package.json` to match the tag. Each platform bundles the
+ffmpeg build for its own architecture; the macOS lanes build one architecture per
+runner so the binary always matches.
+
+Verified locally: the Linux x64 AppImage builds, launches, and resolves the bundled
+ffmpeg from `app.asar.unpacked`. macOS and Windows packaging configuration is
+validated by the config gate, but those artefacts are only produced by CI on their
+own runners — they have not been built on this machine.
+
 ## Install
 
 Grab the latest release from [GitHub Releases](https://github.com/evangit2/lidra/releases) — `Lidra-*` AppImage, `.deb`, `.rpm`, `.flatpak`, `.snap`, `.dmg`, and the Windows installer. No Snap Store release yet, so install the `.snap` file from there directly.
