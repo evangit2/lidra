@@ -4,11 +4,14 @@
  * Apple's player bar names a quality; Lidra's job is to make the name true. The
  * pill shows the tier the audio pipeline actually measured in the stream's own
  * codec configuration — read from the initialisation segment, not from the
- * manifest — and opens a panel with the full breakdown, mirroring Apple's own
- * "Lossless · 24-bit/192 kHz ALAC" sheet.
+ * manifest — and opens a popover with the full breakdown.
  *
- * Everything is namespaced and fixed-position so it cannot shift or block the
- * page's own layout.
+ * The pill lives inside Apple's own LCD, in the after-metadata slot where the
+ * PREVIEW badge sits, and borrows that badge's design tokens (--systemTertiary,
+ * --pageBG, --footnote-emphasized) so it follows Apple's light and dark schemes
+ * and Lidra's themes without a colour of its own. The popover uses the material,
+ * border and shadow of Apple's own popovers. Svelte can rebuild the LCD on a
+ * track change, so an observer puts the pill back when it is dropped.
  */
 (() => {
   if (window.__lidraQualityInstalled) return;
@@ -17,6 +20,11 @@
   const STYLE_ID = "lidra-quality-style";
   const BADGE_ID = "lidra-quality-badge";
   const PANEL_ID = "lidra-quality-panel";
+  const SLOT_SELECTORS = [
+    '[data-testid="player-lcd-after-metadata"] .after-metadata',
+    ".player-lcd__after-metadata .after-metadata",
+    '[data-testid="player-lcd-after-metadata"]',
+  ];
 
   const TIER_TITLES = {
     "hi-res": "Hi-Res Lossless",
@@ -26,187 +34,260 @@
     aac: "High Quality",
   };
 
+  // Apple's lossless glyph: a waveform of rounded bars.
+  const WAVE_ICON =
+    '<svg viewBox="0 0 16 10" aria-hidden="true"><path d="M1 4.2v1.6M4 2.6v4.8M7 .9v8.2M10 2.6v4.8M13 3.6v2.8M15 4.4v1.2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/></svg>';
+
+  const FONT_STACK =
+    '-apple-system, BlinkMacSystemFont, "SF Pro", "Helvetica Neue", Helvetica, Arial, sans-serif';
+
   function ensureStyle() {
     if (document.getElementById(STYLE_ID)) return;
     const style = document.createElement("style");
     style.id = STYLE_ID;
     style.textContent = `
       #${BADGE_ID} {
-        position: fixed;
-        left: 16px;
-        bottom: 92px;
-        z-index: 2147483646;
+        all: unset;
+        box-sizing: border-box;
         display: none;
         align-items: center;
-        gap: 8px;
-        max-width: 46vw;
-        padding: 6px 12px 6px 10px;
-        border: 1px solid rgba(255,255,255,0.12);
-        border-radius: 999px;
-        background: rgba(18,18,20,0.86);
-        color: #f5f5f7;
-        font: 500 12px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-        letter-spacing: 0.01em;
-        box-shadow: 0 4px 18px rgba(0,0,0,0.35);
-        backdrop-filter: blur(14px);
-        -webkit-backdrop-filter: blur(14px);
-        cursor: pointer;
+        gap: 3px;
+        flex: 0 0 auto;
+        padding: 2px 6px 2px 5px;
+        border-radius: 1000px;
+        background: var(--systemTertiary, rgba(255,255,255,0.4));
+        color: var(--pageBG, #1f1f1f);
+        font: var(--footnote-emphasized, 600 10px/1.3 ${FONT_STACK});
         white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        transition: background 140ms ease, border-color 140ms ease;
+        cursor: pointer;
+        transition: background-color 120ms ease, opacity 120ms ease;
       }
-      #${BADGE_ID}:hover { background: rgba(28,28,31,0.94); border-color: rgba(255,255,255,0.22); }
-      #${BADGE_ID}[data-verdict="mismatch"] { background: rgba(72,45,12,0.92); color: #ffd899; }
-      #${BADGE_ID} .lidra-dot {
-        width: 7px; height: 7px; border-radius: 50%;
-        background: #34d399; flex: 0 0 auto;
-      }
-      #${BADGE_ID}[data-verdict="mismatch"] .lidra-dot { background: #f59e0b; }
+      #${BADGE_ID}[data-visible="true"] { display: inline-flex; }
+      #${BADGE_ID}:hover { background: var(--systemSecondary, rgba(255,255,255,0.64)); }
+      #${BADGE_ID}:active { opacity: 0.75; }
+      #${BADGE_ID}:focus-visible { outline: 2px solid var(--keyColor, #fa2d48); outline-offset: 1px; }
+      #${BADGE_ID}[data-verdict="mismatch"] { background: var(--systemOrange, #ff9f0a); color: #1f1f1f; }
+      #${BADGE_ID} svg { width: 11px; height: 8px; flex: 0 0 auto; }
 
       #${PANEL_ID} {
         position: fixed;
-        inset: 0;
         z-index: 2147483647;
-        display: none;
-        align-items: center;
-        justify-content: center;
-        background: rgba(0,0,0,0.55);
-        backdrop-filter: blur(6px);
-        -webkit-backdrop-filter: blur(6px);
-        font: 400 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+        width: 260px;
+        box-sizing: border-box;
+        padding: 14px 0 6px;
+        border: 0.5px solid rgba(0,0,0,0.2);
+        border-radius: 10px;
+        background-color: var(--systemStandardThickMaterialSover-default_IC, rgba(40,40,40,0.96));
+        box-shadow: inset 0 0 0 1px rgba(255,255,255,0.2), 0 8px 40px var(--dialogShadowColor, rgba(0,0,0,0.4));
+        color: var(--systemPrimary, rgba(255,255,255,0.92));
+        font: var(--body, 400 13px/1.23 ${FONT_STACK});
+        transform-origin: bottom center;
+        animation: lidra-quality-in 140ms ease-out;
       }
-      #${PANEL_ID}[data-open="true"] { display: flex; }
-      #${PANEL_ID} .lidra-card {
-        width: 360px;
-        max-width: 86vw;
-        border-radius: 16px;
-        background: #1c1c1e;
-        color: #f5f5f7;
-        box-shadow: 0 24px 64px rgba(0,0,0,0.55);
-        padding: 22px 22px 16px;
+      @supports ((-webkit-backdrop-filter: blur(10px)) or (backdrop-filter: blur(10px))) {
+        #${PANEL_ID} {
+          background-color: var(--systemStandardThickMaterialSover, rgba(40,40,40,0.72));
+          -webkit-backdrop-filter: blur(60px) saturate(210%);
+          backdrop-filter: blur(60px) saturate(210%);
+        }
       }
-      #${PANEL_ID} .lidra-title {
-        text-align: center; margin: 2px 0 2px;
-        font: 600 17px/1.3 inherit;
+      @keyframes lidra-quality-in {
+        from { opacity: 0; transform: translateY(4px) scale(0.98); }
+        to { opacity: 1; transform: none; }
       }
-      #${PANEL_ID} .lidra-subtitle {
-        text-align: center; color: #a1a1a6; margin: 0 0 16px; font-size: 13px;
+      #${PANEL_ID} .lidra-head { display: flex; align-items: center; gap: 10px; padding: 0 14px 12px; }
+      #${PANEL_ID} .lidra-glyph {
+        display: grid; place-items: center; flex: 0 0 auto;
+        width: 30px; height: 30px; border-radius: 7px;
+        background: var(--systemQuaternary, rgba(255,255,255,0.1));
+        color: var(--systemPrimary, rgba(255,255,255,0.92));
       }
-      #${PANEL_ID} .lidra-logo { display: flex; justify-content: center; margin-bottom: 10px; }
+      #${PANEL_ID} .lidra-glyph svg { width: 17px; height: 11px; }
+      #${PANEL_ID}[data-verdict="mismatch"] .lidra-glyph { color: var(--systemOrange, #ff9f0a); }
+      #${PANEL_ID} .lidra-title { font: var(--title-3-emphasized, 600 15px/1.33 ${FONT_STACK}); }
+      #${PANEL_ID} .lidra-subtitle { font: var(--subhead, 400 11px/1.27 ${FONT_STACK}); color: var(--systemSecondary, rgba(255,255,255,0.64)); }
       #${PANEL_ID} dl {
-        margin: 0 0 14px; display: grid; grid-template-columns: auto 1fr;
-        gap: 6px 14px; font-size: 12.5px;
+        display: grid; grid-template-columns: auto 1fr; gap: 5px 12px;
+        margin: 0; padding: 10px 14px;
+        border-top: 1px solid var(--labelDivider, rgba(255,255,255,0.1));
+        font: var(--callout, 400 12px/1.25 ${FONT_STACK});
       }
-      #${PANEL_ID} dt { color: #a1a1a6; }
-      #${PANEL_ID} dd { margin: 0; text-align: right; color: #f5f5f7; }
+      #${PANEL_ID} dt { color: var(--systemSecondary, rgba(255,255,255,0.64)); }
+      #${PANEL_ID} dd { margin: 0; text-align: end; font-variant-numeric: tabular-nums; }
       #${PANEL_ID} .lidra-note {
-        color: #a1a1a6; font-size: 11.5px; text-align: center; margin: 0 0 14px;
+        margin: 0; padding: 0 14px 10px;
+        font: var(--footnote, 400 10px/1.3 ${FONT_STACK});
+        color: var(--systemSecondary, rgba(255,255,255,0.64));
       }
-      #${PANEL_ID} .lidra-actions { display: flex; flex-direction: column; gap: 8px; }
-      #${PANEL_ID} button {
-        font: inherit; padding: 9px 14px; border-radius: 9px; border: none; cursor: pointer;
+      #${PANEL_ID}[data-verdict="mismatch"] .lidra-note { color: var(--systemOrange, #ff9f0a); }
+      #${PANEL_ID} .lidra-menu-item {
+        all: unset; box-sizing: border-box; display: flex; justify-content: space-between;
+        width: calc(100% - 12px); margin: 0 6px; padding: 6px 8px; border-radius: 5px;
+        border-top: 1px solid transparent;
+        font: var(--body, 400 13px/1.23 ${FONT_STACK});
+        color: var(--systemPrimary, rgba(255,255,255,0.92));
+        cursor: pointer;
       }
-      #${PANEL_ID} button.secondary { background: #2c2c2e; color: #f5f5f7; }
-      #${PANEL_ID} button.primary { background: #0a84ff; color: #fff; font-weight: 600; }
+      #${PANEL_ID} .lidra-sep { height: 1px; margin: 0 14px 5px; background: var(--labelDivider, rgba(255,255,255,0.1)); }
+      #${PANEL_ID} .lidra-menu-item:hover,
+      #${PANEL_ID} .lidra-menu-item:focus-visible { background: var(--keyColorBG, #fa2d48); color: #fff; }
     `;
     (document.head || document.documentElement).appendChild(style);
+  }
+
+  function findSlot() {
+    for (const selector of SLOT_SELECTORS) {
+      const slot = document.querySelector(selector);
+      if (slot) return slot;
+    }
+    return null;
   }
 
   function badge() {
     let node = document.getElementById(BADGE_ID);
     if (node) return node;
-    node = document.createElement("div");
+    node = document.createElement("button");
     node.id = BADGE_ID;
+    node.type = "button";
     node.setAttribute("data-verdict", "ok");
-    node.innerHTML = '<span class="lidra-dot"></span><span class="lidra-text"></span>';
+    node.setAttribute("aria-haspopup", "dialog");
+    node.innerHTML = `${WAVE_ICON}<span class="lidra-text"></span>`;
     node.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
-      openPanel();
+      if (document.getElementById(PANEL_ID)) closePanel();
+      else openPanel();
     });
-    // Mount on the document element so a page-level stacking context cannot
-    // cover it; the player bar lives inside body.
-    (document.documentElement || document.body).appendChild(node);
     return node;
+  }
+
+  /** Put the pill in Apple's LCD, before the PREVIEW badge. */
+  function mount() {
+    const node = document.getElementById(BADGE_ID) || (window.__lidraQualityLast ? badge() : null);
+    if (!node) return;
+    const slot = findSlot();
+    if (!slot) {
+      if (node.parentNode) node.parentNode.removeChild(node);
+      return;
+    }
+    if (node.parentNode !== slot || slot.firstChild !== node) slot.insertBefore(node, slot.firstChild);
+  }
+
+  let mountQueued = false;
+  function queueMount() {
+    if (mountQueued) return;
+    mountQueued = true;
+    requestAnimationFrame(() => {
+      mountQueued = false;
+      mount();
+    });
+  }
+
+  function escapeText(value) {
+    return String(value).replace(/[<>&"]/g, "");
   }
 
   function row(label, value) {
     if (value === null || value === undefined || value === "") return "";
-    const safe = String(value).replace(/[<>&]/g, "");
-    return `<dt>${label}</dt><dd>${safe}</dd>`;
+    return `<dt>${label}</dt><dd>${escapeText(value)}</dd>`;
+  }
+
+  let teardown = null;
+  function closePanel() {
+    if (teardown) teardown();
   }
 
   function openPanel() {
     const data = window.__lidraQualityLast;
-    if (!data) return;
+    const anchor = document.getElementById(BADGE_ID);
+    if (!data || !anchor) return;
     ensureStyle();
+    closePanel();
+
     const tier = data.tier || (data.verdict === "mismatch" ? "aac" : "lossless");
     const title = TIER_TITLES[tier] || "Audio";
     const detail = data.detail || data.label || "";
-    const verified = data.verified !== false;
+    const verified = data.verified !== false && data.verdict !== "mismatch";
 
-    let panel = document.getElementById(PANEL_ID);
-    if (panel) panel.remove();
-    panel = document.createElement("div");
+    const panel = document.createElement("div");
     panel.id = PANEL_ID;
-    panel.setAttribute("data-open", "true");
+    panel.setAttribute("role", "dialog");
+    panel.setAttribute("aria-label", "Audio quality");
+    panel.setAttribute("data-verdict", verified ? "ok" : "mismatch");
     panel.innerHTML = `
-      <div class="lidra-card">
-        <div class="lidra-logo">
-          <svg width="34" height="34" viewBox="0 0 24 24" aria-hidden="true">
-            <circle cx="12" cy="12" r="11" fill="#fa2d48"/>
-            <path d="M15.6 6.4v7.1a2.1 2.1 0 1 1-1.3-1.9V8.2l-4.2.9v5.3a2.1 2.1 0 1 1-1.3-1.9V8.1c0-.3.2-.5.5-.6l6-1.3c.2 0 .3 0 .3.2z" fill="#fff"/>
-          </svg>
-        </div>
-        <div class="lidra-title">${title}</div>
-        <div class="lidra-subtitle">${detail}</div>
-        <dl>
-          ${row("Codec", (data.codec || "").toUpperCase())}
-          ${row("Bit depth", data.bitDepth ? `${data.bitDepth}-bit` : "—")}
-          ${row("Sample rate", data.sampleRate ? `${(data.sampleRate / 1000).toFixed(1)} kHz` : "—")}
-          ${row("Channels", data.channels ? (data.channels === 2 ? "Stereo" : `${data.channels} channels`) : "—")}
-          ${row("Bitrate", data.bitrateKbps ? `${data.bitrateKbps} kbps` : "—")}
-          ${row("Source", data.transport || "—")}
-        </dl>
-        <p class="lidra-note">${
-          verified
-            ? "Measured from the stream's own codec configuration."
-            : (data.mismatches && data.mismatches.length
-                ? `Not the requested tier: ${data.mismatches.join("; ")}`
-                : "This stream does not match the requested tier.")
-        }</p>
-        <div class="lidra-actions">
-          <button class="secondary" id="lidra-quality-settings">Audio Quality Settings</button>
-          <button class="primary" id="lidra-quality-ok">OK</button>
+      <div class="lidra-head">
+        <div class="lidra-glyph">${WAVE_ICON}</div>
+        <div>
+          <div class="lidra-title">${escapeText(title)}</div>
+          <div class="lidra-subtitle">${escapeText(detail)}</div>
         </div>
       </div>
+      <dl>
+        ${row("Codec", (data.codec || "").toUpperCase())}
+        ${row("Bit depth", data.bitDepth ? `${data.bitDepth}-bit` : "—")}
+        ${row("Sample rate", data.sampleRate ? `${(data.sampleRate / 1000).toFixed(1)} kHz` : "—")}
+        ${row("Channels", data.channels ? (data.channels === 2 ? "Stereo" : `${data.channels} channels`) : "—")}
+        ${row("Bitrate", data.bitrateKbps ? `${data.bitrateKbps} kbps` : "—")}
+        ${row("Source", data.transport || "—")}
+      </dl>
+      <p class="lidra-note">${
+        verified
+          ? "Verified by Lidra from the stream's codec configuration."
+          : escapeText(
+              data.mismatches && data.mismatches.length
+                ? `Not the requested tier: ${data.mismatches.join("; ")}`
+                : "This stream does not match the requested tier.",
+            )
+      }</p>
+      <div class="lidra-sep"></div>
+      <button type="button" class="lidra-menu-item" id="lidra-quality-settings">Audio Quality Settings…</button>
     `;
     (document.documentElement || document.body).appendChild(panel);
 
-    const close = () => {
-      if (panel && panel.parentNode) panel.parentNode.removeChild(panel);
+    // Sit above the pill, centred on it, kept inside the window.
+    const place = () => {
+      const rect = anchor.getBoundingClientRect();
+      const width = panel.offsetWidth;
+      const left = Math.min(Math.max(8, rect.left + rect.width / 2 - width / 2), innerWidth - width - 8);
+      panel.style.left = `${Math.round(left)}px`;
+      panel.style.bottom = `${Math.round(innerHeight - rect.top + 10)}px`;
     };
-    panel.addEventListener("click", (event) => {
-      if (event.target === panel) close();
-    });
-    panel.querySelector("#lidra-quality-ok").addEventListener("click", close);
+    place();
+
+    const onPointer = (event) => {
+      if (!panel.contains(event.target) && !anchor.contains(event.target)) closePanel();
+    };
+    const onKey = (event) => {
+      if (event.key === "Escape") closePanel();
+    };
+    document.addEventListener("pointerdown", onPointer, true);
+    document.addEventListener("keydown", onKey, true);
+    window.addEventListener("resize", place);
+    anchor.setAttribute("aria-expanded", "true");
+
+    teardown = () => {
+      teardown = null;
+      document.removeEventListener("pointerdown", onPointer, true);
+      document.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("resize", place);
+      anchor.setAttribute("aria-expanded", "false");
+      if (panel.parentNode) panel.parentNode.removeChild(panel);
+    };
+
     panel.querySelector("#lidra-quality-settings").addEventListener("click", () => {
-      close();
+      closePanel();
       try {
         window.AMWrapper?.ipcRenderer?.send("nav:settings");
       } catch (_) {
         /* the settings window is a convenience, not a requirement */
       }
     });
-    const onKey = (event) => {
-      if (event.key === "Escape") {
-        close();
-        document.removeEventListener("keydown", onKey, true);
-      }
-    };
-    document.addEventListener("keydown", onKey, true);
   }
+
+  new MutationObserver(queueMount).observe(document.documentElement, {
+    childList: true,
+    subtree: true,
+  });
 
   /**
    * payload: { label, verdict, requested?, mismatches?, tier?, codec?,
@@ -219,16 +300,13 @@
     ensureStyle();
     const node = badge();
     const text = node.querySelector(".lidra-text");
-    const title = TIER_TITLES[payload.tier] || "";
-    if (text) {
-      text.textContent =
-        payload.verdict === "mismatch"
-          ? `Lidra · ${payload.label}`
-          : `Lidra · ${title || payload.label}${payload.detail ? ` · ${payload.detail}` : ""}`;
-    }
+    const title = TIER_TITLES[payload.tier] || payload.label;
+    if (text) text.textContent = payload.verdict === "mismatch" ? `${title} ⚠︎` : title;
     node.setAttribute("data-verdict", payload.verdict === "mismatch" ? "mismatch" : "ok");
-    node.style.display = "inline-flex";
-    node.title = "Click for audio quality details";
+    node.setAttribute("data-visible", "true");
+    node.title = payload.detail || payload.label;
+    node.setAttribute("aria-label", `${title}, ${payload.detail || payload.label}. Show audio quality details`);
+    mount();
   };
 
   /** Replay the last measurement after an in-page navigation. */

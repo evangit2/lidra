@@ -2,10 +2,10 @@
  * Quality badge rendering check.
  *
  * Loads the real music.apple.com page, injects assets/qualityBadge.js exactly as
- * the app does, feeds it a measured payload and captures the window. Also
- * asserts the pill stays inside the viewport and does not change the document's
- * layout metrics, since a badge that shifts the player bar would be worse than
- * no badge at all.
+ * the app does, feeds it a measured payload and captures the window. The pill
+ * mounts in Apple's LCD beside the PREVIEW badge, so a track must be loaded
+ * first; the check asserts it landed in that slot, stays inside the viewport
+ * and does not change the document's layout metrics.
  *
  * Run with:  xvfb-run -a npx electron --no-sandbox test/e2e/quality-badge.cjs
  */
@@ -28,8 +28,14 @@ app.whenReady().then(async () => {
     show: false,
     webPreferences: { session: ses },
   });
-  await win.loadURL("https://music.apple.com/us/browse");
+  await win.loadURL("https://music.apple.com/us/album/kind-of-blue/268443092");
   await new Promise((resolve) => setTimeout(resolve, 4000));
+  // Load a preview so the LCD has its after-metadata slot, then pause it.
+  await win.webContents.executeJavaScript(`(async () => {
+    document.querySelector('button[aria-label^="Play So What"]')?.click();
+    await new Promise((resolve) => setTimeout(resolve, 2500));
+    try { MusicKit.getInstance().pause(); } catch (_) {}
+  })()`);
 
   const script = fs.readFileSync(path.join(root, "assets", "qualityBadge.js"), "utf-8");
   await win.webContents.executeJavaScript(script);
@@ -42,6 +48,8 @@ app.whenReady().then(async () => {
       label: "ALAC 24-bit/192 kHz stereo",
       verdict: "ok",
       requested: "hi-res",
+      tier: "hi-res",
+      detail: "ALAC 24-bit/192 kHz stereo",
     })})`,
   );
   await new Promise((resolve) => setTimeout(resolve, 600));
@@ -52,6 +60,7 @@ app.whenReady().then(async () => {
     const style = getComputedStyle(node);
     return {
       text: node.textContent.trim(),
+      inLcd: !!node.closest('[data-testid="player-lcd-after-metadata"]'),
       x: Math.round(rect.x), y: Math.round(rect.y),
       w: Math.round(rect.width), h: Math.round(rect.height),
       opacity: style.opacity,
