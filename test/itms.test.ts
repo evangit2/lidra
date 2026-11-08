@@ -72,7 +72,7 @@ describe('transformItmsUrl', () => {
 
 describe('extractItmsUrlFromArgv', () => {
   it('returns the parsed target when itms URL is the last argv element', () => {
-    const argv = ['/usr/bin/sidra', '--enable-features=Foo', 'itms://music.apple.com/gb/album/foo/123?app=music'];
+    const argv = ['/usr/bin/lidra', '--enable-features=Foo', 'itms://music.apple.com/gb/album/foo/123?app=music'];
     expect(extractItmsUrlFromArgv(argv)).toEqual({
       kind: 'url',
       url: 'https://music.apple.com/gb/album/foo/123',
@@ -80,23 +80,23 @@ describe('extractItmsUrlFromArgv', () => {
   });
 
   it('returns the parsed target when itms URL is in the middle of argv', () => {
-    const argv = ['/usr/bin/sidra', 'itms://music.apple.com/deeplink?p=radio', '--some-flag'];
+    const argv = ['/usr/bin/lidra', 'itms://music.apple.com/deeplink?p=radio', '--some-flag'];
     expect(extractItmsUrlFromArgv(argv)).toEqual({ kind: 'route', token: 'radio' });
   });
 
   it('returns null when argv contains no itms URL', () => {
-    const argv = ['/usr/bin/sidra', '--enable-features=Foo'];
+    const argv = ['/usr/bin/lidra', '--enable-features=Foo'];
     expect(extractItmsUrlFromArgv(argv)).toBeNull();
   });
 
   it('returns null when argv contains only a malformed itms URL', () => {
-    const argv = ['/usr/bin/sidra', 'itms://evil.example.com/album/foo'];
+    const argv = ['/usr/bin/lidra', 'itms://evil.example.com/album/foo'];
     expect(extractItmsUrlFromArgv(argv)).toBeNull();
   });
 
   it('returns the first valid itms URL when multiple are present', () => {
     const argv = [
-      '/usr/bin/sidra',
+      '/usr/bin/lidra',
       'itms://music.apple.com/deeplink?p=library',
       'itms://music.apple.com/gb/album/foo/123?app=music',
     ];
@@ -105,7 +105,7 @@ describe('extractItmsUrlFromArgv', () => {
 
   it('skips malformed itms URLs and returns the first valid one', () => {
     const argv = [
-      '/usr/bin/sidra',
+      '/usr/bin/lidra',
       'itms://evil.example.com/foo',
       'itms://music.apple.com/deeplink?p=browse',
     ];

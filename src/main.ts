@@ -1,7 +1,6 @@
 import {
   app,
   BrowserWindow,
-  components,
   dialog,
   ipcMain,
   Menu,
@@ -72,6 +71,22 @@ import {
 } from "./wedgeDetector";
 import { contentReadyProbeScript } from "./contentReady";
 import { initNotificationProbe } from "./notify";
+import { AudioEngine } from "./audio/engine";
+import { CredentialStore } from "./audio/tokens";
+import { KeyCache, createKeyProvider } from "./audio/keys";
+import { initAudioBridge } from "./audio/bridge";
+import {
+  getAudioDecryptorService,
+  getAudioEnabled,
+  getAudioEmeShim,
+  getAudioFfmpegPath,
+  getAudioKeyService,
+  getAudioKeyToken,
+  getAudioKeyTransport,
+  getAudioManifestService,
+  getAudioQuality,
+  getStorefront as getAudioStorefront,
+} from "./config";
 import { errorMessage, liveWebContents, runSteps } from "./utils";
 import { openExternalUrl } from "./utils/openExternal";
 
@@ -134,9 +149,9 @@ app.on("child-process-gone", (_event, details) => {
 });
 
 // --- App identity: must be set before app.whenReady() on Windows, or neither
-// desktop notifications nor the GSMTC media identity attach to Sidra ---
+// desktop notifications nor the GSMTC media identity attach to Lidra ---
 if (process.platform === "win32") {
-  app.setAppUserModelId("com.wimpysworld.sidra");
+  app.setAppUserModelId("com.evangit2.lidra");
 }
 
 // --- Platform switches: must run before app.whenReady() ---
@@ -145,7 +160,7 @@ if (process.platform === "linux") {
     "enable-features",
     "UseOzonePlatform,WaylandWindowDecorations",
   );
-  // MediaSessionService off: Sidra registers its own MPRIS service, and
+  // MediaSessionService off: Lidra registers its own MPRIS service, and
   // Chromium's would be a second, conflicting registration on the same bus.
   // AudioServiceOutOfProcess off: it moves audio back in-process, which is
   // where SetGlobalAppName can reach PulseAudio at all.
@@ -195,6 +210,7 @@ app.on("before-quit", () => {
 });
 
 let win: BrowserWindow | null = null;
+let audioEngine: AudioEngine | null = null;
 let rendererDocumentGeneration = 0;
 
 // Single-instance lock: forward subsequent launches to the running instance so
@@ -242,6 +258,8 @@ export interface Assets {
   navBarScript: string;
   hookScript: string;
   fastQueueScript: string;
+  drmShimScript: string;
+  drmShimEnabled: boolean;
 }
 
 function createSplash(): {
@@ -302,7 +320,7 @@ function createSplash(): {
 }
 
 function setupApplicationMenu(): void {
-  if (process.env.SIDRA_DEVTOOLS === "1") {
+  if (process.env.LIDRA_DEVTOOLS === "1") {
     const menuTemplate: Electron.MenuItemConstructorOptions[] = [
       {
         role: "viewMenu",
@@ -404,33 +422,68 @@ function initPlayerIPC(): Player {
   return player;
 }
 
-async function initSession(): Promise<Electron.Session> {
-  // Clear stale service worker and cache data while Widevine initialises.
-  // Both operations are independent, and navigation has not started.
-  const ses = session.fromPartition("persist:sidra");
-  await Promise.all([
-    components.whenReady(),
-    ses.clearData({
-      dataTypes: ["serviceWorkers", "cache"],
-      origins: allServices().map((svc) => svc.origin),
+/**
+ * Build and start the native audio pipeline.
+ *
+ * Returns the engine so the settings pane and shutdown path can reach it.
+ * Failures are logged, never fatal: if the pipeline cannot start, Lidra falls
+ * back to the page's own playback attempt instead of refusing to launch.
+ */
+function initAudioEngine(ses: Electron.Session): AudioEngine {
+  const credentials = new CredentialStore(ses);
+  const keyCache = new KeyCache(
+    createKeyProvider({
+      transport: getAudioKeyTransport(),
+      address: getAudioKeyService(),
+      token: getAudioKeyToken() ?? undefined,
     }),
-  ]);
-  interface CdmComponentStatus {
-    status: string;
-    title: string;
-    version: string;
-  }
+  );
+  const engine = new AudioEngine({
+    credentials,
+    keyCache,
+    cacheRoot: path.join(app.getPath("userData"), "audio-cache"),
+    getStorefront: () => getAudioStorefront() ?? "us",
+    getPreference: () => {
+      const quality = getAudioQuality();
+      return quality === "auto" ? null : quality;
+    },
+    ffmpegPath: getAudioFfmpegPath() ?? undefined,
+    decryptMode: getAudioDecryptorService().trim() ? "wrapper" : "key",
+    decryptorService: getAudioDecryptorService(),
+    manifestService: getAudioManifestService(),
+    onStateChange: (snapshot) => {
+      mainLog.info(
+        `audio ${snapshot.state} ${snapshot.asset.name}` +
+          (snapshot.variant ? ` [${snapshot.variant.label}]` : "") +
+          (snapshot.error ? `: ${snapshot.error}` : ""),
+      );
+    },
+  });
 
-  const cdmStatus = Object.values(components.status())[0] as
-    | CdmComponentStatus
-    | undefined;
-  if (cdmStatus) {
-    mainLog.info(
-      `Widevine CDM ready: ${cdmStatus.title} v${cdmStatus.version} (${cdmStatus.status})`,
-    );
-  } else {
-    mainLog.warn("Widevine CDM ready: status unavailable");
+  if (!getAudioEnabled()) {
+    mainLog.info("native audio pipeline disabled by settings");
+    return engine;
   }
+  engine
+    .start()
+    .then(() => initAudioBridge({ session: ses, engine }))
+    .catch((error: unknown) => {
+      mainLog.error(
+        `audio engine failed to start: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    });
+  ipcMain.handle("lidra:audio-status", () => engine.status());
+  return engine;
+}
+
+async function initSession(): Promise<Electron.Session> {
+  // Clear stale service worker and cache data before navigation starts. Lidra
+  // ships no DRM component: playback is served by the local audio pipeline.
+  const ses = session.fromPartition("persist:lidra");
+  await ses.clearData({
+    dataTypes: ["serviceWorkers", "cache"],
+    origins: allServices().map((svc) => svc.origin),
+  });
 
   // Set UA on the default session (updates navigator.userAgentData Client Hints)
   session.defaultSession.setUserAgent(UA);
@@ -460,19 +513,27 @@ function loadAssets(): Assets {
   const hookPath = getAssetPath("assets", "musicKitHook.js");
   const hookScript = fs
     .readFileSync(hookPath, "utf-8")
-    .replace("__SIDRA_SERVICE_HOSTS__", () =>
+    .replace("__LIDRA_SERVICE_HOSTS__", () =>
       JSON.stringify(allServices().map((service) => service.host)),
     );
   const fastQueueScript = fs.readFileSync(
     getAssetPath("assets", "fastPlaylistQueue.js"),
     "utf-8",
   );
+  const drmShimEnabled = getAudioEmeShim();
+  const drmShimScript = drmShimEnabled
+    ? fs
+        .readFileSync(getAssetPath("assets", "lidraDrm.js"), "utf-8")
+        .replace("__LIDRA_EME__", "true")
+    : "";
   return {
     STYLE_FIX_CSS,
     authFrameScript,
     navBarScript,
     hookScript,
     fastQueueScript,
+    drmShimScript,
+    drmShimEnabled,
   };
 }
 
@@ -488,7 +549,7 @@ function createMainWindow(ses: Electron.Session): {
     autoHideMenuBar: true,
     backgroundColor: "#000000",
     webPreferences: {
-      partition: "persist:sidra",
+      partition: "persist:lidra",
       preload: path.join(__dirname, "preload.js"),
       nodeIntegration: false,
       contextIsolation: true,
@@ -553,7 +614,7 @@ function setupSplashTransition(
 }
 
 function setupSessionHeaders(ses: Electron.Session): void {
-  // Set UA on the persist:sidra session used by the window
+  // Set UA on the persist:lidra session used by the window
   ses.setUserAgent(UA);
 
   // Strip Electron and app name tokens from outgoing request headers
@@ -598,8 +659,16 @@ async function injectRendererScripts(
   try {
     const currentUrl = win.webContents.getURL();
     if (isAllowedNavigationUrl(currentUrl)) {
+      if (assets.drmShimScript.length > 0) {
+        try {
+          await win.webContents.executeJavaScript(assets.drmShimScript);
+          mainLog.debug("EME shim injected");
+        } catch (e: unknown) {
+          mainLog.warn(`failed to inject the EME shim ${context}:`, e);
+        }
+      }
       await win.webContents.executeJavaScript(
-        assets.hookScript.replace("__SIDRA_DOCUMENT_GENERATION__", () =>
+        assets.hookScript.replace("__LIDRA_DOCUMENT_GENERATION__", () =>
           String(rendererDocumentGeneration),
         ),
       );
@@ -654,7 +723,7 @@ function setupNavigationHandlers(win: BrowserWindow, player: Player): void {
 const AUTH_FRAME_HOSTS = new Set<string>(
   allServices().flatMap((svc) => [...svc.authFrameHosts]),
 );
-const AUTH_FRAME_LOG_PREFIX = "[sidra] auth-frame hide:";
+const AUTH_FRAME_LOG_PREFIX = "[lidra] auth-frame hide:";
 
 // assets/authFrameFix.js hides the passkey and "Sign in with iPhone" routes in
 // Apple's sign-in iframe, and reports what it hid back over console-message,
@@ -738,7 +807,7 @@ function setupWindowEvents(win: BrowserWindow, markCssReady: () => void): void {
 
   // Apple Music registers a beforeunload handler while audio plays. Electron
   // shows no confirmation dialog, so the handler silently blocks close() and
-  // app.quit() with no error. Overriding it here lets Sidra exit.
+  // app.quit() with no error. Overriding it here lets Lidra exit.
   win.webContents.on("will-prevent-unload", (event) => {
     event.preventDefault();
   });
@@ -861,6 +930,12 @@ function setupContentHandlers(
 }
 
 if (gotLock) {
+  app.on("will-quit", () => {
+    audioEngine?.stop().catch(() => {
+      /* shutdown is best effort */
+    });
+  });
+
   app.on("second-instance", (_event, argv) => {
     const target = extractItmsUrlFromArgv(argv);
     routeItmsTarget(target);
@@ -870,12 +945,13 @@ if (gotLock) {
   app
     .whenReady()
     .then(async () => {
-      mainLog.info("app ready, waiting for Widevine CDM...");
+      mainLog.info("app ready");
       const { splash, minDisplay, cssReady, markCssReady } = createSplash();
       setupApplicationMenu();
       const player = initPlayerIPC();
       initNotificationProbe();
       const ses = await initSession();
+      audioEngine = initAudioEngine(ses);
       cleanArtworkCache();
 
       if (process.platform === "linux" || process.platform === "win32") {
@@ -938,9 +1014,9 @@ if (gotLock) {
       initPageLanguageTracking(win);
       setupAuthFrameInjection(win, assets.authFrameScript);
       appTray = createTray();
-      if (process.env.SIDRA_DEVTOOLS === "1") {
+      if (process.env.LIDRA_DEVTOOLS === "1") {
         win.webContents.openDevTools();
-        mainLog.info("DevTools opened (SIDRA_DEVTOOLS=1)");
+        mainLog.info("DevTools opened (LIDRA_DEVTOOLS=1)");
       }
       mainLog.info("loading Apple Music...");
       win
@@ -965,8 +1041,8 @@ if (gotLock) {
       mainLog.error("startup failed:", err);
       const detail = errorMessage(err);
       dialog.showErrorBox(
-        "Sidra failed to start",
-        `Sidra could not finish starting.\n\n${detail}\n\nSee the Sidra log for details, then start Sidra again.`,
+        "Lidra failed to start",
+        `Lidra could not finish starting.\n\n${detail}\n\nSee the Lidra log for details, then start Lidra again.`,
       );
       app.quit();
     });
@@ -977,7 +1053,7 @@ app.on("window-all-closed", () => {
   app.quit();
 });
 
-// Restore a close-to-tray window when macOS activates Sidra from the dock.
+// Restore a close-to-tray window when macOS activates Lidra from the dock.
 app.on("activate", () => {
   focusMainWindow();
 });

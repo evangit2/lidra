@@ -234,13 +234,13 @@ function sendActivity(player: Player): void {
   const largeImageKey =
     artworkUrl && artworkUrl.length <= MAX_IMAGE_URL_LEN
       ? artworkUrl
-      : "sidra_logo";
+      : "lidra_logo";
   const largeImageText = albumName
     ? truncate(albumName, MAX_STRING_LEN)
     : undefined;
 
   const buttons: Array<{ label: string; url: string }> = [
-    { label: app.getName(), url: "https://github.com/wimpysworld/sidra" },
+    { label: app.getName(), url: "https://github.com/evangit2/lidra" },
   ];
   if (trackUrl) {
     const displayName = getService(getMusicService()).displayName;
@@ -254,7 +254,7 @@ function sendActivity(player: Player): void {
     state,
     largeImageKey,
     largeImageText,
-    smallImageKey: "sidra_logo",
+    smallImageKey: "lidra_logo",
     smallImageText: app.getName(),
     buttons,
   };

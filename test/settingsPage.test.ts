@@ -74,7 +74,7 @@ function harness(initial = fixture(), options: { search?: string; initialError?:
   vm.runInNewContext(source, {
     document,
     URLSearchParams,
-    window: { location: { search: options.search ?? '' }, sidraSettings: { getState, apply, onState }, addEventListener: (_event: string, listener: () => void) => { close = listener; } },
+    window: { location: { search: options.search ?? '' }, lidraSettings: { getState, apply, onState }, addEventListener: (_event: string, listener: () => void) => { close = listener; } },
   });
   return { document, labels, getState, apply, onState, unsubscribe, push: (state: SettingsState) => push(state), close: () => close(),
     element: (id: string) => elements.get(id)! };

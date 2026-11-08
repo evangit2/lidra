@@ -1,8 +1,8 @@
 {
   "name": "lidra",
   "productName": "Lidra",
-  "version": "1.2.1",
-  "description": "Lidra \u2014 an elegant Apple Music desktop client for Linux, macOS and Windows, forked from wimpysworld/sidra.",
+  "version": "1.3.0",
+  "description": "Lidra — an elegant Apple Music desktop client with a native high-quality audio pipeline, forked from Lidra.",
   "main": "dist/main.js",
   "scripts": {
     "prebuild": "node scripts/inject-lastfm-credentials.cjs",
@@ -11,11 +11,11 @@
     "test:watch": "vitest"
   },
   "author": "Martin Wimpress <code@wimpress.io>",
-  "homepage": "https://github.com/wimpysworld/sidra",
+  "homepage": "https://github.com/evangit2/lidra",
   "license": "BlueOak-1.0.0",
   "type": "commonjs",
   "devDependencies": {
-    "electron": "github:castlabs/electron-releases#v45.2.1+wvcus",
+    "electron": "^45.2.3",
     "electron-builder": "^26.18.1",
     "typescript": "^7.x",
     "vitest": "^5.0.2"
@@ -38,7 +38,7 @@
     "undici": "7.30.1"
   },
   "build": {
-    "appId": "world.wimpys.sidra",
+    "appId": "io.github.evangit2.lidra",
     "copyright": "Copyright (c) Martin Wimpress",
     "publish": {
       "provider": "github",
@@ -56,6 +56,7 @@
       "assets/locales/update.json",
       "assets/fastPlaylistQueue.js",
       "assets/musicKitHook.js",
+      "assets/lidraDrm.js",
       "assets/navigationBar.js",
       "assets/settings.html",
       "assets/settings.css",
@@ -63,7 +64,7 @@
       "assets/about.html",
       "assets/authFrameFix.js",
       "assets/authStyleFix.css",
-      "assets/sidra-logo.png",
+      "assets/lidra-logo.png",
       "assets/splash.html",
       "assets/styleFix.css",
       "assets/windowChrome.css"
@@ -76,9 +77,6 @@
     ],
     "directories": {
       "output": "release"
-    },
-    "electronDownload": {
-      "mirror": "https://github.com/castlabs/electron-releases/releases/download/"
     },
     "toolsets": {
       "appimage": "1.0.3"
@@ -93,7 +91,7 @@
         "snap"
       ],
       "category": "Audio",
-      "executableName": "sidra",
+      "executableName": "lidra",
       "desktop": {
         "entry": {
           "Actions": "PlayPause;Next;Previous;Stop;",
@@ -103,22 +101,22 @@
           "PlayPause": {
             "Name": "Play-Pause",
             "Name[de]": "Abspielen-Pausieren",
-            "Exec": "dbus-send --print-reply --dest=org.mpris.MediaPlayer2.sidra /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.PlayPause"
+            "Exec": "dbus-send --print-reply --dest=org.mpris.MediaPlayer2.lidra /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.PlayPause"
           },
           "Next": {
             "Name": "Next",
-            "Name[de]": "N\u00e4chstes",
-            "Exec": "dbus-send --print-reply --dest=org.mpris.MediaPlayer2.sidra /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.Next"
+            "Name[de]": "Nächstes",
+            "Exec": "dbus-send --print-reply --dest=org.mpris.MediaPlayer2.lidra /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.Next"
           },
           "Previous": {
             "Name": "Previous",
             "Name[de]": "Vorheriges",
-            "Exec": "dbus-send --print-reply --dest=org.mpris.MediaPlayer2.sidra /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.Previous"
+            "Exec": "dbus-send --print-reply --dest=org.mpris.MediaPlayer2.lidra /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.Previous"
           },
           "Stop": {
             "Name": "Stop",
             "Name[de]": "Stop",
-            "Exec": "dbus-send --print-reply --dest=org.mpris.MediaPlayer2.sidra /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.Stop"
+            "Exec": "dbus-send --print-reply --dest=org.mpris.MediaPlayer2.lidra /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.Stop"
           }
         }
       }
@@ -166,7 +164,7 @@
         "--device=dri",
         "--socket=pulseaudio",
         "--share=network",
-        "--own-name=org.mpris.MediaPlayer2.sidra",
+        "--own-name=org.mpris.MediaPlayer2.lidra",
         "--talk-name=org.freedesktop.Notifications",
         "--talk-name=org.kde.StatusNotifierWatcher"
       ]
@@ -185,7 +183,7 @@
         "slots": [
           {
             "mpris": {
-              "name": "sidra"
+              "name": "lidra"
             }
           }
         ],
@@ -196,7 +194,6 @@
       }
     },
     "afterPack": "build/afterPack.cjs",
-    "afterSign": "build/afterSign.cjs",
     "mac": {
       "target": [
         "dmg"

@@ -34,7 +34,7 @@ exports.generateAppStream = function generateAppStream(projectDir) {
  const screenshot = revision ? `
  <screenshots>
   <screenshot type="default">
-   <image>${escapeXml(`${repository}/raw/${revision}/assets/sidra-screenshot.png`)}</image>
+   <image>${escapeXml(`${repository}/raw/${revision}/assets/lidra-screenshot.png`)}</image>
   </screenshot>
  </screenshots>` : "";
  const xml = `<?xml version="1.0" encoding="UTF-8"?>

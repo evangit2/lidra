@@ -1,6 +1,6 @@
 # Privacy Policy - Last.fm scrobbling
 
-This policy covers Sidra's scrobbling feature, including its optional custom endpoint.
+This policy covers Lidra's scrobbling feature, including its optional custom endpoint.
 
 ## What the feature does
 
@@ -8,7 +8,7 @@ Scrobbling is off by default. Connect a Last.fm account through Settings or the 
 
 ## What is shared with Last.fm
 
-For each track, Sidra sends:
+For each track, Lidra sends:
 
 - Track title
 - Artist name
@@ -20,17 +20,17 @@ A now-playing update goes out when a track starts or resumes, and a scrobble onc
 
 ## Custom endpoint
 
-When selected, a custom endpoint receives the same listening fields instead of Last.fm. Sidra sends dummy authentication values, never your saved Last.fm session, username or Sidra's real application credentials. HTTP endpoints receive data without encryption. Sidra does not follow redirects.
+When selected, a custom endpoint receives the same listening fields instead of Last.fm. Lidra sends dummy authentication values, never your saved Last.fm session, username or Lidra's real application credentials. HTTP endpoints receive data without encryption. Lidra does not follow redirects.
 
-Your endpoint can forward plays to other services, according to its configuration and privacy practices. Sidra sends to one destination per launch. A successful response confirms receipt at the endpoint, not delivery to its downstream services.
+Your endpoint can forward plays to other services, according to its configuration and privacy practices. Lidra sends to one destination per launch. A successful response confirms receipt at the endpoint, not delivery to its downstream services.
 
 ## What is stored on your machine
 
-Connecting stores a Last.fm session key and your Last.fm username in Sidra's configuration file (`config.json` in Sidra's user data directory), in plain text. The session key authorises scrobbling to your account. It goes nowhere except Last.fm.
+Connecting stores a Last.fm session key and your Last.fm username in Lidra's configuration file (`config.json` in Lidra's user data directory), in plain text. The session key authorises scrobbling to your account. It goes nowhere except Last.fm.
 
 When a scrobble cannot reach Last.fm, because the connection dropped for example, the same file holds that play until the next request carries it out. Each held play is a track title, artist name and the time playback started, plus the album name and track length when the player reported them. A play from a radio station also keeps the flag saying the station chose it. At most 50 are held, and the oldest goes once that is full.
 
-Custom endpoints use the same queue. The configuration file stores the full endpoint URL and a hash that identifies its queue destination. On the next launch after a destination change, Sidra discards held plays. Endpoint values and custom server error messages are not logged.
+Custom endpoints use the same queue. The configuration file stores the full endpoint URL and a hash that identifies its queue destination. On the next launch after a destination change, Lidra discards held plays. Endpoint values and custom server error messages are not logged.
 
 ## Turning it off and revoking access
 
@@ -38,11 +38,11 @@ Custom endpoints use the same queue. The configuration file stores the full endp
 - **Disconnect** deletes the session key, the username and any held plays from your machine.
 - **Off** under **Custom scrobbler** stops custom requests but keeps held plays and your saved Last.fm account. Remove `lastfm.apiUrl` and restart to return to Last.fm. The shared on/off preference still applies.
 
-Last.fm session keys never expire and the Last.fm API has no call to revoke one, so Disconnect cannot invalidate the key at Last.fm's end. Remove Sidra under [Applications in your Last.fm settings](https://www.last.fm/settings/applications) to do that.
+Last.fm session keys never expire and the Last.fm API has no call to revoke one, so Disconnect cannot invalidate the key at Last.fm's end. Remove Lidra under [Applications in your Last.fm settings](https://www.last.fm/settings/applications) to do that.
 
-## What Sidra does not collect
+## What Lidra does not collect
 
-Sidra has no server, no analytics, and no telemetry. Listening data goes to Last.fm or your selected custom endpoint. Sidra's developers do not receive it.
+Lidra has no server, no analytics, and no telemetry. Listening data goes to Last.fm or your selected custom endpoint. Lidra's developers do not receive it.
 
 ## Last.fm's privacy policy
 
@@ -50,8 +50,8 @@ Once Last.fm receives your scrobbles, Last.fm's own practices apply, including h
 
 ## Changes to this policy
 
-This policy may be updated. All changes will appear in the [Sidra repository](https://github.com/wimpysworld/sidra).
+This policy may be updated. All changes will appear in the [Lidra repository](https://github.com/evangit2/lidra).
 
 ## Contact
 
-Report concerns or questions at [github.com/wimpysworld/sidra/issues](https://github.com/wimpysworld/sidra/issues).
+Report concerns or questions at [github.com/evangit2/lidra/issues](https://github.com/evangit2/lidra/issues).

@@ -1,14 +1,14 @@
 # Privacy Policy - Discord Rich Presence
 
-This policy covers Sidra's Discord Rich Presence feature only.
+This policy covers Lidra's Discord Rich Presence feature only.
 
 ## What the feature does
 
-Sidra reads track metadata from Apple Music on your device and sends it to the Discord desktop client via a local socket (IPC) on your computer.
+Lidra reads track metadata from Apple Music on your device and sends it to the Discord desktop client via a local socket (IPC) on your computer.
 
 ## What is shared with Discord
 
-When the feature is active, Sidra passes the following to your local Discord client:
+When the feature is active, Lidra passes the following to your local Discord client:
 
 - Song title
 - Artist name
@@ -18,11 +18,11 @@ When the feature is active, Sidra passes the following to your local Discord cli
 - Which service you are playing, Apple Music or Apple Music Classical, in that button's label
 - Start and end times for the current track while it plays, which Discord shows as a progress bar
 
-## What Sidra does not collect or store
+## What Lidra does not collect or store
 
-This feature collects and stores nothing, and needs no account. Sidra sends the data above to the Discord client on your computer over a local socket, and nowhere else. Discord then shows your activity to other Discord users, so the data does leave your machine through Discord itself. Sidra has no server, no analytics, and no telemetry.
+This feature collects and stores nothing, and needs no account. Lidra sends the data above to the Discord client on your computer over a local socket, and nowhere else. Discord then shows your activity to other Discord users, so the data does leave your machine through Discord itself. Lidra has no server, no analytics, and no telemetry.
 
-Other Sidra features can send data off your machine once you switch them on. Last.fm scrobbling is opt-in and sends your listening to Last.fm; see [`LASTFM-PRIVACY.md`](LASTFM-PRIVACY.md).
+Other Lidra features can send data off your machine once you switch them on. Last.fm scrobbling is opt-in and sends your listening to Last.fm; see [`LASTFM-PRIVACY.md`](LASTFM-PRIVACY.md).
 
 ## Discord's privacy policy
 
@@ -30,8 +30,8 @@ Once Discord receives presence data, Discord's own practices apply. See [Discord
 
 ## Changes to this policy
 
-This policy may be updated. All changes will appear in the [Sidra repository](https://github.com/wimpysworld/sidra).
+This policy may be updated. All changes will appear in the [Lidra repository](https://github.com/evangit2/lidra).
 
 ## Contact
 
-Report concerns or questions at [github.com/wimpysworld/sidra/issues](https://github.com/wimpysworld/sidra/issues).
+Report concerns or questions at [github.com/evangit2/lidra/issues](https://github.com/evangit2/lidra/issues).

@@ -109,11 +109,11 @@ afterEach(async () => {
 
 describe("Linux track notifications", () => {
   it("uses the exported Flatpak icon and desktop entry for host notifications", async () => {
-    vi.stubEnv("FLATPAK_ID", "world.wimpys.sidra");
+    vi.stubEnv("FLATPAK_ID", "io.github.evangit2.lidra");
     await adapter.show(track(), current);
     const [message] = notifyCalls();
-    expect(message.body[2]).toBe("world.wimpys.sidra");
-    expect(message.body[6]["desktop-entry"].value).toBe("world.wimpys.sidra");
+    expect(message.body[2]).toBe("io.github.evangit2.lidra");
+    expect(message.body[6]["desktop-entry"].value).toBe("io.github.evangit2.lidra");
   });
 
   it("sends localised named actions, artwork and silent hints without service activation", async () => {
@@ -123,9 +123,9 @@ describe("Linux track notifications", () => {
     expect(message.signature).toBe("susssasa{sv}i");
     expect(message.flags).toBe(MessageFlag.NO_AUTO_START);
     expect(message.body.slice(0, 6)).toEqual([
-      "Sidra",
+      "Lidra",
       0,
-      getAssetPath("assets", "sidra-logo.png"),
+      getAssetPath("assets", "lidra-logo.png"),
       "Song",
       "Artist &amp; &lt;Album&gt;",
       [
@@ -143,7 +143,7 @@ describe("Linux track notifications", () => {
     expect(message.body[6].transient.signature).toBe("b");
     expect(message.body[6].transient.value).toBe(true);
     expect(message.body[7]).toBe(-1);
-    expect(message.body[6]["desktop-entry"].value).toBe("sidra");
+    expect(message.body[6]["desktop-entry"].value).toBe("lidra");
     expect(message.body[6]["image-path"].signature).toBe("s");
     expect(message.body[6]["image-path"].value).toBe("file:///tmp/art.jpg");
   });
@@ -161,9 +161,9 @@ describe("Linux track notifications", () => {
   it("keeps the application icon without an artwork hint when artwork is absent", async () => {
     await adapter.show({ ...track(), icon: undefined }, current);
     const [message] = notifyCalls();
-    expect(message.body[2]).toBe(getAssetPath("assets", "sidra-logo.png"));
+    expect(message.body[2]).toBe(getAssetPath("assets", "lidra-logo.png"));
     expect(message.body[6]).not.toHaveProperty("image-path");
-    expect(message.body[6]["desktop-entry"].value).toBe("sidra");
+    expect(message.body[6]["desktop-entry"].value).toBe("lidra");
     signal("ActionInvoked", [1, "next"]);
     expect(onAction).toHaveBeenCalledExactlyOnceWith("next");
   });

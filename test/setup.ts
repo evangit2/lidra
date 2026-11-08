@@ -6,9 +6,9 @@ import { vi } from "vitest";
 // Each test file can override specific behaviour through vi.mocked().
 vi.mock("electron", () => ({
   app: {
-    getName: () => "Sidra",
+    getName: () => "Lidra",
     getVersion: () => "0.3.0",
-    getPath: (name: string) => `/tmp/sidra-test/${name}`,
+    getPath: (name: string) => `/tmp/lidra-test/${name}`,
     getPreferredSystemLanguages: () => ["en-GB", "en"],
     getLocaleCountryCode: () => "GB",
     isPackaged: false,

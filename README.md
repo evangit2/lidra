@@ -10,11 +10,49 @@
 
 Lidra wraps `music.apple.com` directly: Apple owns the interface and keeps it current, while Lidra wires it into each platform's native media subsystem (media keys, MPRIS, Now Playing, taskbar controls) instead of bolting on a custom player. An Apple Music subscription is required for playback.
 
-> **Fork note:** Lidra is a fork of [wimpysworld/sidra](https://github.com/wimpysworld/sidra) (Blue Oak 1.0.0, © Martin Wimpress). UI, theming, and sign-in flow are unchanged from upstream; audio stays as licensed in-app playback — no download pipeline.
+> **Fork note:** Lidra is a fork of [wimpysworld/sidra](https://github.com/wimpysworld/sidra) (Blue Oak 1.0.0, © Martin Wimpress). UI, theming, sign-in flow and release infrastructure are unchanged from upstream. The playback stack is replaced: Lidra serves Apple Music's lossless, hi-res and Dolby renditions through its own audio pipeline instead of Chromium's DRM path. See [Audio pipeline](#audio-pipeline) and [docs/AUDIO-PIPELINE.md](docs/AUDIO-PIPELINE.md).
 
 <p align="center">
-  <a href="assets/sidra-screenshot.png"><img src="assets/sidra-screenshot.png" alt="Lidra playing music with Settings open" width="100%"></a>
+  <a href="assets/lidra-screenshot.png"><img src="assets/lidra-screenshot.png" alt="Lidra playing music with Settings open" width="100%"></a>
 </p>
+
+## Audio pipeline
+
+Lidra keeps Sidra's interface, sign-in, theming and integrations, and replaces the playback stack underneath them.
+
+- **No Chromium DRM.** Stock Electron: no Widevine CDM, no EVS/VMP signing. The page's player is satisfied by a loopback HLS playlist instead of a protected CDN stream.
+- **Quality comes from the master manifest**, not from what the web player is offered: hi-res ALAC (up to 24-bit/192 kHz), ALAC lossless, Dolby Atmos (E-AC-3), Dolby Audio (AC-3) and AAC. Lidra asks the Apple Music API for `extendedAssetUrls.enhancedHls` with the session you signed in with, ranks every rendition and plays the best one your preference allows.
+- **Fragments are decrypted and muxed as they arrive.** Nothing waits for a full download: the player's manifest request is held only until the first two seconds exist, so pressing play starts audio in well under a second.
+- **The page still owns playback.** Because Lidra answers the manifest request with its own playlist, the media element, transport, queue, scrubbing and player bar stay exactly as upstream — seeking included.
+- **Decryption runs in the app**, driven by a key source you supply: a key service (socket or HTTP) or the wrapper decrypt socket described in [docs/AUDIO-PIPELINE.md](docs/AUDIO-PIPELINE.md).
+
+| Source | Delivered as | Needs ffmpeg |
+| --- | --- | --- |
+| AAC-LC / HE-AAC | stream copy (fMP4) | no |
+| ALAC lossless / hi-res | FLAC in fragmented MP4 (bit-exact) | yes |
+| Dolby Atmos (E-AC-3) | FLAC, 5.1 preserved | yes |
+| Dolby Audio (AC-3) | FLAC, 5.1 preserved | yes |
+
+Configuration lives in the Audio section of Settings or the environment:
+
+| Variable | Purpose |
+| --- | --- |
+| `LIDRA_AUDIO_ENABLED` | `0` disables the pipeline and leaves the page's own playback alone |
+| `LIDRA_AUDIO_QUALITY` | `hi-res`, `lossless`, `atmos`, `dolby-audio`, `aac`, or `auto` |
+| `LIDRA_KEY_SERVICE` | `host:port`, `unix:/path` or `http(s)://…` key service |
+| `LIDRA_KEY_TRANSPORT` | `socket` (default) or `http` |
+| `LIDRA_KEY_TOKEN` | bearer token for an HTTP key service |
+| `LIDRA_DECRYPTOR` | wrapper decrypt socket; switches playback to remote decryption |
+| `LIDRA_MANIFEST_SERVICE` | wrapper manifest socket, for masters the API omits |
+| `LIDRA_FFMPEG` | explicit ffmpeg path |
+
+### Legal
+
+Lidra is an alternative playback client for people with a legitimate, active Apple Music subscription. It is not intended to provide unauthorised access to subscription content, bypass payment, distribute copyrighted audio, or facilitate piracy.
+
+A valid subscription establishes legitimate access to a service; it does not by itself authorise circumventing technological protection measures. Whether a particular implementation is lawful access, interoperability or prohibited circumvention depends on how it operates, on Apple's agreements, and on applicable law, including the DMCA and its exemptions.
+
+Lidra bundles no key-extraction or DRM-circumvention tooling. It implements authorised APIs, local decryption of streams you are entitled to play, and playback paths you configure yourself. Review any third-party key service or wrapper you connect for licensing, security and legal compliance before using it. This notice states intended use; it is not a legal opinion or a declaration that every technique is permissible.
 
 ## Features
 

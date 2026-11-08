@@ -25,7 +25,7 @@ interface BundledTheme extends ThemeDefinition {
   name: BundledThemeName;
 }
 
-/** Names of the themes Sidra ships, as stored in config and shown in the tray. */
+/** Names of the themes Lidra ships, as stored in config and shown in the tray. */
 export type BundledThemeName =
   | 'catppuccin'
   | 'dracula'
@@ -308,7 +308,7 @@ export function bundledTheme(name: BundledThemeName): BundledTheme | undefined {
   return bundledThemesByName.get(name);
 }
 
-/** True when a stored string is a theme Sidra can render. */
+/** True when a stored string is a theme Lidra can render. */
 export function isThemeName(value: string): value is ThemeName {
   return value === 'apple-music'
     || value === 'custom'

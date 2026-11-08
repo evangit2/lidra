@@ -4,7 +4,7 @@
   // loadAssets() in src/main.ts replaces AUTH_FIX_TOKEN from src/authFrame.ts with JSON.
   // executeJavaScript() cannot supply loadFile() query parameters, so the raw asset requires substitution.
   /** @type {{ css: string, containerSelectors: string[], logPrefix: string }} */
-  var CONFIG = __SIDRA_AUTH_FIX__;
+  var CONFIG = __LIDRA_AUTH_FIX__;
 
   // Broad selectors start at a matched button to protect unrelated form groups.
   const sharedContainers = CONFIG.containerSelectors;
@@ -12,15 +12,15 @@
 
   // Keep container hiding in the script so shared login inputs remain visible.
   const css = CONFIG.css;
-  const STYLE_ID = 'sidra-auth-fix';
+  const STYLE_ID = 'lidra-auth-fix';
   const TEXT_RE = /(sign in with )?iphone|passkey/i;
   const CAPTION_RE = /requires .{0,30}(ios|iphone|ipad)|(ios|ipados) ?\d+ or later/i;
   const CONTAINER_SELECTOR = sharedContainers.concat(SCRIPT_ONLY_CONTAINERS).join(', ');
   const CAPTION_TAGS = 'p, small, span, div';
   const CAPTION_MAX_LEN = 200;
   // Share ownership across reinjection without retaining detached elements.
-  const hiddenElements = window.__sidraAuthFixHiddenElements || new WeakMap();
-  window.__sidraAuthFixHiddenElements = hiddenElements;
+  const hiddenElements = window.__lidraAuthFixHiddenElements || new WeakMap();
+  window.__lidraAuthFixHiddenElements = hiddenElements;
 
   const root = document.head || document.documentElement;
   if (root) {
@@ -139,8 +139,8 @@
 
   // The frame re-renders as the user moves through the flow, so the passes run
   // again from a MutationObserver.
-  if (!window.__sidraAuthFixInstalled) {
-    window.__sidraAuthFixInstalled = true;
+  if (!window.__lidraAuthFixInstalled) {
+    window.__lidraAuthFixInstalled = true;
     const target = document.body || document.documentElement;
     if (target && typeof MutationObserver !== 'undefined') {
       const observer = new MutationObserver(() => { runHidePasses(); });

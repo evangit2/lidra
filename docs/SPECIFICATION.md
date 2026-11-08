@@ -1,6 +1,6 @@
-# Sidra - Specification
+# Lidra - Specification
 
-A minimal Apple Music desktop client. CastLabs Electron wraps `music.apple.com` and `classical.music.apple.com` directly, injecting a lightweight hook script to bridge MusicKit.js events to native platform media controls. `src/musicService.ts` holds the registry of both services. Apple maintains the UI; Sidra maintains the bridge.
+A minimal Apple Music desktop client. Electron wraps `music.apple.com` and `classical.music.apple.com` directly, injecting a lightweight hook script to bridge MusicKit.js events to native platform media controls. `src/musicService.ts` holds the registry of both services. Apple maintains the UI; Lidra maintains the bridge.
 
 The codebase is tightly focused and as lean as possible. Five runtime dependencies.
 
@@ -43,7 +43,7 @@ The codebase is tightly focused and as lean as possible. Five runtime dependenci
 
 | Component | Choice | Rationale |
 |---|---|---|
-| Shell | `castlabs/electron-releases` (wvcus) | Widevine CDM - no alternative exists |
+| Shell | Electron | Native audio pipeline, no Chromium DRM |
 | Language | TypeScript | Type safety, ecosystem match |
 | Renderer content | `music.apple.com` and `classical.music.apple.com` | Zero UI code; Apple maintains it |
 | MusicKit hook | Injected JS script post-page-load | Hooks `MusicKit.getInstance()` events |
@@ -55,7 +55,7 @@ The codebase is tightly focused and as lean as possible. Five runtime dependenci
 | macOS dock | `app.dock.setMenu()` + `win.setProgressBar()` | Right-click menu and progress bar |
 | Config | `electron-conf` | Persistent config (storefront, theme, preferences) |
 | Build | `electron-builder` | AppImage + deb + rpm (Linux), DMG (macOS), NSIS (Windows) |
-| Package manager | npm | Simplest option; avoids pnpm's strict semver parsing issues with CastLabs `+wvcus` tag |
+| Package manager | npm | Simplest option |
 
 ---
 
@@ -63,7 +63,7 @@ The codebase is tightly focused and as lean as possible. Five runtime dependenci
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│ CastLabs Electron (Widevine CDM auto-installed)                  │
+│ Electron                  │
 │                                                                  │
 │  ┌──────────────────────┐      ┌─────────────────────────────┐   │
 │  │  Main Process        │◄─IPC─│  Renderer Process           │   │
@@ -101,9 +101,9 @@ The sandboxed isolated preload owns standard Gamepad polling for both services. 
 ## Source Structure
 
 ```
-sidra/
+lidra/
 ├── src/
-│   ├── main.ts                    - bootstrap, Widevine wait, window, IPC hub
+│   ├── main.ts                    - bootstrap, window, IPC hub
 │   ├── preload.ts                 - contextBridge exposure plus isolated standard Gamepad polling
 │   ├── controller.ts              - private controller actions, channel constants, and guards
 │   ├── controllerIPC.ts           - action validation, native key input, and guarded Back navigation
@@ -117,8 +117,8 @@ sidra/
 │   ├── contentReady.ts            - CONTENT_READY_SELECTOR and contentReadyProbeScript()
 │   ├── itms.ts                    - pure itms:// URL parser and argv extraction
 │   ├── types/
-│   │   ├── electron.d.ts          - module augmentations for CastLabs type gaps
-│   │   └── hook.d.ts              - hook-preload contract: SidraHook, AMWrapperBridge, SendChannel, ReceiveChannel, SidraCommandMessage, Window augmentations
+│   │   ├── electron.d.ts          - module augmentations for Electron type gaps
+│   │   └── hook.d.ts              - hook-preload contract: LidraHook, AMWrapperBridge, SendChannel, ReceiveChannel, LidraCommandMessage, Window augmentations
 │   ├── theme.ts                   - theme lifecycle: ThemeName, resolveTheme(), getThemeCss(), applyTheme(), injectThemeCss(), initThemeCSS()
 │   ├── palettes.ts                - bundled theme registry (BUNDLED_THEMES), BundledThemeName, themeLabel()
 │   ├── customTheme.ts             - validates the custom JSON colour palette
@@ -158,10 +158,10 @@ sidra/
 │   ├── fastPlaylistQueue.js       - Injected post-load; starts library playlists from a saved track list
 │   │                                 (see Fast Playlist Start). Must be listed in `asarUnpack`
 │   ├── navigationBar.js           - Injected post-load; adds back/forward/reload buttons to sidebar.
-│   │                                 Its `__SIDRA_NAV_LABELS__` placeholder is replaced with the
+│   │                                 Its `__LIDRA_NAV_LABELS__` placeholder is replaced with the
 │   │                                 localised aria-labels when src/main.ts reads the file
 │   ├── authFrameFix.js            - Injected into Apple's sign-in iframe; hides the passkey and
-│   │                                 "Sign in with iPhone" options. Its `__SIDRA_AUTH_FIX__`
+│   │                                 "Sign in with iPhone" options. Its `__LIDRA_AUTH_FIX__`
 │   │                                 placeholder is replaced with the stylesheet and container
 │   │                                 selectors when src/main.ts reads the file. Must be listed
 │   │                                 in electron-builder's `asarUnpack`
@@ -171,7 +171,7 @@ sidra/
 │   │                                 background, the body layout and the icon rule. Both pages
 │   │                                 load it with a <link>, so both carry `style-src 'self'` in
 │   │                                 their CSP. Must be listed in `asarUnpack`
-│   ├── sidra-logo.png             - Product logo used in About window
+│   ├── lidra-logo.png             - Product logo used in About window
 │   ├── locales/
 │   │   ├── loading.json           - 1 translation record: LOADING_TEXT
 │   │   ├── tray.json              - 37 translation records: tray menu, dock, Windows taskbar
@@ -184,11 +184,11 @@ sidra/
 │   ├── authStyleFix.css           - CSS injected into Apple auth iframes to hide
 │   │                                 unsupported passkey and "Sign in with iPhone" options
 │   └── icons/
-│       ├── sidraTemplate.png      - macOS tray (template image)
-│       ├── sidra-tray.png         - Windows tray
-│       ├── sidra-tray-outline.png - GNOME tray (outlined icon)
-│       ├── sidra-tray-dark.png    - Other Linux trays (dark theme)
-│       ├── sidra-tray-light.png   - Other Linux trays (light theme)
+│       ├── lidraTemplate.png      - macOS tray (template image)
+│       ├── lidra-tray.png         - Windows tray
+│       ├── lidra-tray-outline.png - GNOME tray (outlined icon)
+│       ├── lidra-tray-dark.png    - Other Linux trays (dark theme)
+│       ├── lidra-tray-light.png   - Other Linux trays (light theme)
 │       └── tray/menu/
 │           ├── dark/              - 18px dark-theme menu item PNGs
 │           └── light/             - 18px light-theme menu item PNGs
@@ -203,13 +203,13 @@ sidra/
 
 ## Dependencies
 
-Sidra keeps runtime dependencies narrow and purpose-driven. Each package must provide a platform integration or maintenance function that Electron, Node.js, or the standard library does not already cover.
+Lidra keeps runtime dependencies narrow and purpose-driven. Each package must provide a platform integration or maintenance function that Electron, Node.js, or the standard library does not already cover.
 
 `package.json` is the source of truth for direct dependency names and version ranges. `package-lock.json` is the source of truth for resolved packages.
 
 Current dependency roles:
 
-- CastLabs Electron - application shell and Widevine CDM support
+- Electron - application shell, native audio pipeline, no Chromium DRM
 - electron-builder - distributable package creation
 - TypeScript and Vitest - type checking and unit tests
 - electron-log - application logging
@@ -310,29 +310,29 @@ Integrations send commands to the renderer via a two-stage bridge:
 
 1. Main process calls `webContents.send(channel, ...args)` for each command channel
 2. Preload script receives via `ipcRenderer.on(channel)` for each channel in `RECEIVE_CHANNELS`
-3. Preload forwards to the main world via `window.postMessage({ type: 'sidra:command', channel, args }, window.location.origin)`
-4. `musicKitHook.js` listens for `sidra:command` messages and dispatches to `window.__sidra` methods
+3. Preload forwards to the main world via `window.postMessage({ type: 'lidra:command', channel, args }, window.location.origin)`
+4. `musicKitHook.js` listens for `lidra:command` messages and dispatches to `window.__lidra` methods
 
 The `window.location.origin` target keeps the bridge service-agnostic: it passes the sandbox same-origin check on both `music.apple.com` and `classical.music.apple.com` without a hardcoded origin.
 
 The command bridge uses the `RECEIVE_CHANNELS` allowlist in `src/preload.ts` and the `COMMANDS` allowlist in `assets/musicKitHook.js`, which must stay in sync. `src/types/hook.d.ts` declares `SendChannel` and `ReceiveChannel` union types used by `src/preload.ts` (`Set<SendChannel>`, `Set<ReceiveChannel>`), enforcing channel sync at compile time. Contract tests in `test/player.test.ts` verify alignment via `expectTypeOf`.
 
-The MPRIS and wedge dispatch sites log command provenance without command arguments. `result=sent` means that Sidra invoked the local action. `result=dropped` means that the required main window was unavailable. The result does not confirm that the renderer completed the command.
+The MPRIS and wedge dispatch sites log command provenance without command arguments. `result=sent` means that Lidra invoked the local action. `result=dropped` means that the required main window was unavailable. The result does not confirm that the renderer completed the command.
 
 | Control | Method | Triggered by |
 |---|---|---|
-| Play | `window.__sidra.play()` | MPRIS `Play()` |
-| Pause | `window.__sidra.pause()` | MPRIS `Pause()` |
-| Stop | `window.__sidra.stop(requestId)` | MPRIS `Stop()` |
-| Play/Pause toggle | `window.__sidra.playPause()` | MPRIS `PlayPause()` |
-| Next track | `window.__sidra.next()` | MPRIS `Next()` |
-| Previous track | `window.__sidra.previous()` | MPRIS `Previous()` |
-| Seek | `window.__sidra.seek(seconds)` | MPRIS `Seek()`, `SetPosition()` |
-| Set volume | `window.__sidra.setVolume(float)` | MPRIS volume property |
-| Set repeat mode | `window.__sidra.setRepeat(mode)` | MPRIS `LoopStatus` |
-| Set shuffle mode | `window.__sidra.setShuffle(mode)` | MPRIS `Shuffle` |
-| Open media URL | `window.__sidra.openUri(url)` | MPRIS `OpenUri()` |
-| Select queued occurrence | `window.__sidra.goTo(occurrenceId)` | MPRIS TrackList `GoTo()` |
+| Play | `window.__lidra.play()` | MPRIS `Play()` |
+| Pause | `window.__lidra.pause()` | MPRIS `Pause()` |
+| Stop | `window.__lidra.stop(requestId)` | MPRIS `Stop()` |
+| Play/Pause toggle | `window.__lidra.playPause()` | MPRIS `PlayPause()` |
+| Next track | `window.__lidra.next()` | MPRIS `Next()` |
+| Previous track | `window.__lidra.previous()` | MPRIS `Previous()` |
+| Seek | `window.__lidra.seek(seconds)` | MPRIS `Seek()`, `SetPosition()` |
+| Set volume | `window.__lidra.setVolume(float)` | MPRIS volume property |
+| Set repeat mode | `window.__lidra.setRepeat(mode)` | MPRIS `LoopStatus` |
+| Set shuffle mode | `window.__lidra.setShuffle(mode)` | MPRIS `Shuffle` |
+| Open media URL | `window.__lidra.openUri(url)` | MPRIS `OpenUri()` |
+| Select queued occurrence | `window.__lidra.goTo(occurrenceId)` | MPRIS TrackList `GoTo()` |
 
 ---
 
@@ -379,7 +379,7 @@ The sandboxed preload must compile as one runtime file. Its only runtime `requir
 
 ### Saved data
 
-The playlist's tracks are saved in IndexedDB (`sidra-fast-queue`) on the user's machine, because MusicKit needs each track's title and artwork. That takes about 0.65 KB a track, and sign-out deletes it. Every play that takes the fast path first asks the API for the playlist's modified date and track total. If they match the saved copy, the copy is used. If they differ, the playlist is fetched again, played from the fresh list and saved for the next play. A reorder changes the modified date, and an added or removed song changes the total. Opening a playlist page prepares it in the background.
+The playlist's tracks are saved in IndexedDB (`lidra-fast-queue`) on the user's machine, because MusicKit needs each track's title and artwork. That takes about 0.65 KB a track, and sign-out deletes it. Every play that takes the fast path first asks the API for the playlist's modified date and track total. If they match the saved copy, the copy is used. If they differ, the playlist is fetched again, played from the fresh list and saved for the next play. A reorder changes the modified date, and an added or removed song changes the total. Opening a playlist page prepares it in the background.
 
 The saved data is limited to 20 playlists, 5 MB in total and 30 days since a playlist was saved, and the oldest go first. A playlist over 5 MB is not saved and is fetched on each play. `mk.unauthorize()` deletes everything and tries again, up to three times, when the delete does not commit.
 
@@ -401,7 +401,7 @@ MusicKit drops tracks without play parameters, so the script leaves them out. Th
 
 ## MusicKit Hook Script
 
-Injected into `music.apple.com` and `classical.music.apple.com` after page load via `webContents.executeJavaScript()`. Polls for `MusicKit` availability, hooks events, and exposes the `window.__sidra` control object. `isAllowedNavigationUrl()` gates both injection sites, so the hook never reaches a third host.
+Injected into `music.apple.com` and `classical.music.apple.com` after page load via `webContents.executeJavaScript()`. Polls for `MusicKit` availability, hooks events, and exposes the `window.__lidra` control object. `isAllowedNavigationUrl()` gates both injection sites, so the hook never reaches a third host.
 
 `assets/musicKitHook.js` is read with `fs.readFileSync` at runtime in the main process. It must be listed in the `asarUnpack` array in `electron-builder` configuration; without it, AppImage builds will crash on startup because the file is inaccessible inside the packed asar archive.
 
@@ -412,16 +412,16 @@ Injected into `music.apple.com` and `classical.music.apple.com` after page load 
 (function () {
   // Injection guard: set synchronously at IIFE top level and never cleared.
   // Re-running the IIFE would install duplicate message listeners (#154, #153).
-  if (window.__sidraHookInjected) return;
-  window.__sidraHookInjected = true;
+  if (window.__lidraHookInjected) return;
+  window.__lidraHookInjected = true;
 
   function attachToInstance(mk) {
     // Per-instance marker, read by the 5-second monitor below. It is not an
-    // injection guard: __sidraHookInjected is. The assignment is the first
+    // injection guard: __lidraHookInjected is. The assignment is the first
     // statement, before anything that can throw. A marker assigned last went
     // stale on a throw, so the monitor re-attached on every cycle and added
     // a duplicate set of listeners each time.
-    window.__sidraHookedMk = mk;
+    window.__lidraHookedMk = mk;
 
     // Then, in this order: stopVolumePoll(), attachPlaybackListeners(mk),
     // attachVolume(mk). The stop runs first so a throw in either attach
@@ -443,7 +443,7 @@ Injected into `music.apple.com` and `classical.music.apple.com` after page load 
     // Volume polling: stores lastVolume, sends initial volume on attach,
     // polls mk.volume at 250ms intervals, sends IPC only on change
 
-    // window.__sidra control object, assigned last:
+    // window.__lidra control object, assigned last:
     //   play, pause, stop, playPause, next, previous, openUri,
     //   seek, setVolume, setRepeat, setShuffle
   }
@@ -459,11 +459,11 @@ Injected into `music.apple.com` and `classical.music.apple.com` after page load 
     if (!window.MusicKit) return;
     clearInterval(waitForMK);
 
-    // sidra:command message listener for preload bridge:
+    // lidra:command message listener for preload bridge:
     //   window.addEventListener('message', ...) dispatches
-    //   incoming { type: 'sidra:command', channel, args } messages
-    //   to the matching window.__sidra method via a COMMANDS allowlist.
-    //   It indexes window.__sidra?.[method], because a failed attach
+    //   incoming { type: 'lidra:command', channel, args } messages
+    //   to the matching window.__lidra method via a COMMANDS allowlist.
+    //   It indexes window.__lidra?.[method], because a failed attach
     //   leaves no hook object while the listener still runs.
 
     attachSafely(MusicKit.getInstance());
@@ -474,7 +474,7 @@ Injected into `music.apple.com` and `classical.music.apple.com` after page load 
     // to the current control. The handler steps the live instance volume by 5%.
 
     // 5-second monitor: compares MusicKit.getInstance() against
-    // window.__sidraHookedMk and calls attachSafely() when the singleton
+    // window.__lidraHookedMk and calls attachSafely() when the singleton
     // is replaced.
     setInterval(() => { /* ... */ }, 5000);
   }, 500);
@@ -502,7 +502,7 @@ The correct approach differs by platform. Conflating them is what goes wrong.
 
 ### Linux: Explicit MPRIS via dbus-next
 
-**Service name**: `org.mpris.MediaPlayer2.sidra`
+**Service name**: `org.mpris.MediaPlayer2.lidra`
 
 Chromium has a built-in MPRIS bridge (via `navigator.mediaSession`) that must be disabled to avoid conflicts. It registers as `org.mpris.MediaPlayer2.chromium.instance{PID}`, which is useless for app identity. Both Cider and apple-music-wrapper disable it and implement their own D-Bus service.
 
@@ -511,11 +511,11 @@ Chromium has a built-in MPRIS bridge (via `navigator.mediaSession`) that must be
 if (process.platform === 'linux') {
   app.commandLine.appendSwitch('enable-features', 'UseOzonePlatform,WaylandWindowDecorations');
   app.commandLine.appendSwitch('disable-features', 'MediaSessionService,WaylandWpColorManagerV1,AudioServiceOutOfProcess');
-  app.setDesktopName('sidra.desktop');
+  app.setDesktopName('lidra.desktop');
 }
 ```
 
-**PulseAudio stream identity**: Chromium hard-codes `application.name = "Chromium"` and `application.icon_name = "chromium-browser"` on PulseAudio/PipeWire streams via explicit API calls; `PULSE_PROP_*` environment variables are ineffective. Sidra fixes this by disabling `AudioServiceOutOfProcess` (moves audio in-process so `SetGlobalAppName` reaches PulseAudio) and calling `app.setDesktopName('sidra.desktop')` (sets `CHROME_DESKTOP` for `GetXdgAppId()`). See [electron/electron#27581](https://github.com/electron/electron/issues/27581).
+**PulseAudio stream identity**: Chromium hard-codes `application.name = "Chromium"` and `application.icon_name = "chromium-browser"` on PulseAudio/PipeWire streams via explicit API calls; `PULSE_PROP_*` environment variables are ineffective. Lidra fixes this by disabling `AudioServiceOutOfProcess` (moves audio in-process so `SetGlobalAppName` reaches PulseAudio) and calling `app.setDesktopName('lidra.desktop')` (sets `CHROME_DESKTOP` for `GetXdgAppId()`). See [electron/electron#27581](https://github.com/electron/electron/issues/27581).
 
 ### macOS: Chromium's Built-in mediaSession Bridge
 
@@ -534,11 +534,11 @@ Chromium maps `navigator.mediaSession` to Global System Media Transport Controls
 ```typescript
 // main.ts - must run before app.whenReady()
 if (process.platform === 'win32') {
-  app.setAppUserModelId('com.wimpysworld.sidra');
+  app.setAppUserModelId('com.evangit2.lidra');
 }
 ```
 
-The GSMTC overlay (media flyout on Windows 11) will show "Sidra" as the controlling app. `app.setAppUserModelId()` is also required for desktop notifications to appear on Windows - without it, `Notification.show()` is silently ignored.
+The GSMTC overlay (media flyout on Windows 11) will show "Lidra" as the controlling app. `app.setAppUserModelId()` is also required for desktop notifications to appear on Windows - without it, `Notification.show()` is silently ignored.
 
 ### Windows: Taskbar Thumbnail Toolbar and Overlay Icon
 
@@ -560,7 +560,7 @@ The `org.mpris.MediaPlayer2.Player` interface exposes the following properties a
 
 ### Properties
 
-| Property | Access | Sidra approach |
+| Property | Access | Lidra approach |
 |---|---|---|
 | `PlaybackStatus` | Read | From `playbackStateDidChange` |
 | `LoopStatus` | Read/Write | Bidirectional via `repeatModeDidChange` |
@@ -580,7 +580,7 @@ The `org.mpris.MediaPlayer2.Player` interface exposes the following properties a
 
 ### Methods
 
-| Method | Sidra approach |
+| Method | Lidra approach |
 |---|---|
 | `Next()` | `mk.skipToNextItem()` |
 | `Previous()` | `mk.skipToPreviousItem()` |
@@ -618,7 +618,7 @@ MPRIS command provenance uses `source=mpris method=<method> [channel=<channel>] 
 
 | MPRIS property | MusicKit source |
 |---|---|
-| `mpris:trackid` | `/org/sidra/tracklist/{occurrenceId}`, matching the TrackList occurrence; legacy payloads without occurrence identity use `/org/sidra/track/{item.id}` |
+| `mpris:trackid` | `/org/lidra/tracklist/{occurrenceId}`, matching the TrackList occurrence; legacy payloads without occurrence identity use `/org/lidra/track/{item.id}` |
 | `mpris:length` | Effective finite playback duration in microseconds, with item duration as fallback |
 | `mpris:artUrl` | `artwork.url` (512x512) |
 | `xesam:title` | `attributes.name` |
@@ -627,15 +627,15 @@ MPRIS command provenance uses `source=mpris method=<method> [channel=<channel>] 
 | `xesam:genre` | `attributes.genreNames` |
 | `xesam:url` | `getShareUrl()` (`attributes.url` → `/song/{catalogId}` → `/song/{globalId}`) |
 
-Library items without `attributes.url` use a catalogue ID to reconstruct `/song/{id}`. Without a URL or catalogue ID, Sidra omits `xesam:url`.
+Library items without `attributes.url` use a catalogue ID to reconstruct `/song/{id}`. Without a URL or catalogue ID, Lidra omits `xesam:url`.
 Timed radio metadata updates title, artist, album and share URL while retaining the station track ID, artwork, duration and position.
 Missing song fields clear the previous song's fields. A missing song URL falls back to the station URL when available.
 
 ### Read-only TrackList
 
-Sidra exports `org.mpris.MediaPlayer2.TrackList` on the existing `/org/mpris/MediaPlayer2` object and reports `HasTrackList=true`. It exposes the current queue occurrence, up to ten before it and up to ten after it. At either end, the window shifts to retain 21 entries when available; shorter queues expose every entry. A loaded queue with no current item uses the clamped MusicKit queue position as its anchor. An empty queue exposes an empty list.
+Lidra exports `org.mpris.MediaPlayer2.TrackList` on the existing `/org/mpris/MediaPlayer2` object and reports `HasTrackList=true`. It exposes the current queue occurrence, up to ten before it and up to ten after it. At either end, the window shifts to retain 21 entries when available; shorter queues expose every entry. A loaded queue with no current item uses the clamped MusicKit queue position as its anchor. An empty queue exposes an empty list.
 
-The hook assigns opaque IDs using a `WeakMap` of MusicKit item objects. Separate appearances of the same catalogue recording receive distinct IDs. Retained objects keep their IDs through queue edits and context slides; document or MusicKit instance replacement starts a new namespace. If MusicKit reuses one object for multiple entries, Sidra declines to publish the ambiguous context. Player metadata still identifies the current item. When the current object cannot be associated with the queue, replacement signals report `NoTrack` as the TrackList's current occurrence.
+The hook assigns opaque IDs using a `WeakMap` of MusicKit item objects. Separate appearances of the same catalogue recording receive distinct IDs. Retained objects keep their IDs through queue edits and context slides; document or MusicKit instance replacement starts a new namespace. If MusicKit reuses one object for multiple entries, Lidra declines to publish the ambiguous context. Player metadata still identifies the current item. When the current object cannot be associated with the queue, replacement signals report `NoTrack` as the TrackList's current occurrence.
 
 `queueDidChange` carries only the bounded context through the existing generation-checked renderer IPC. `Player` validates its exact shape, identities, uniqueness and metadata fields, caches independent snapshots, and clears them on committed document replacement. The hook observes `queueItemsDidChange`, `queuePositionDidChange` and item changes. The existing 250 ms poll checks for edits MusicKit does not announce; unchanged snapshots send no IPC. Position ticks do not report the queue.
 
@@ -654,7 +654,7 @@ A changed exposed sequence emits `TrackListReplaced`, followed by `PropertiesCha
 The wire-level test runs on a disposable session bus:
 
 ```bash
-dbus-run-session -- env SIDRA_TEST_MPRIS_BUS=1 npm test -- test/mprisBus.test.ts
+dbus-run-session -- env LIDRA_TEST_MPRIS_BUS=1 npm test -- test/mprisBus.test.ts
 ```
 
 Live playback verification should additionally cover Apple Music and Classical queues, duplicate recordings, shuffle, service switching and natural gapless advancement. Passing the isolated bus test does not establish MusicKit's behaviour on a live Apple page.
@@ -663,7 +663,7 @@ Live playback verification should additionally cover Apple Music and Classical q
 
 ## Volume Sync
 
-Cider's MPRIS volume sync is one-directional (MPRIS to MusicKit only, no reliable MusicKit to MPRIS), with a feedback loop on `volumeDidChange`. Sidra fixes this with an ordered queue of pending echoes:
+Cider's MPRIS volume sync is one-directional (MPRIS to MusicKit only, no reliable MusicKit to MPRIS), with a feedback loop on `volumeDidChange`. Lidra fixes this with an ordered queue of pending echoes:
 
 ```
 MPRIS sets Volume
@@ -686,15 +686,15 @@ A 2000ms safety timeout (`_volumeSafetyMs`) drops the whole queue when no echo a
 
 ### Volume Event Reporting
 
-`assets/musicKitHook.js` binds `playbackVolumeDidChange`. A CDP session against a running Sidra confirmed that a `mk.volume` write fires that event once and never fires `volumeDidChange`. The hook was bound to `volumeDidChange` until then, so the listener never fired and the 250ms poll was the only reporting path.
+`assets/musicKitHook.js` binds `playbackVolumeDidChange`. A CDP session against a running Lidra confirmed that a `mk.volume` write fires that event once and never fires `volumeDidChange`. The hook was bound to `volumeDidChange` until then, so the listener never fired and the 250ms poll was the only reporting path.
 
 The 250ms poll stays as a fallback. On the tested Music page, focus or hover over the volume button exposed `input[type=range][data-testid=volume-control-range]`. Its `input` events changed MusicKit volume and `HTMLMediaElement.volume`, then MPRIS volume. This check did not cover Classical. The poll sends IPC only when the value differs from the last one sent.
 
-The IPC channel is still named `volumeDidChange`. That is Sidra's own channel name, not the MusicKit event name, and the two differ on purpose.
+The IPC channel is still named `volumeDidChange`. That is Lidra's own channel name, not the MusicKit event name, and the two differ on purpose.
 
 ### Scroll to Change Volume
 
-Pointing at the player bar volume control and scrolling changes the volume in 5% steps, up on wheel-up. A passive `pointerover` listener on `window` finds the current control with `event.target.closest('.chrome-volume')`. `bindVolumeWheel()` removes the `wheel` listener from the previous control, then adds a non-passive listener to the current control. The handler writes `window.__sidraHookedMk.volume`, so the value reaches the tray and MPRIS through the existing `volumeDidChange` route. No `sidra:command` channel was added.
+Pointing at the player bar volume control and scrolling changes the volume in 5% steps, up on wheel-up. A passive `pointerover` listener on `window` finds the current control with `event.target.closest('.chrome-volume')`. `bindVolumeWheel()` removes the `wheel` listener from the previous control, then adds a non-passive listener to the current control. The handler writes `window.__lidraHookedMk.volume`, so the value reaches the tray and MPRIS through the existing `volumeDidChange` route. No `lidra:command` channel was added.
 
 The selector matches the `chrome-volume` class token. The two services differ in the element that carries it:
 
@@ -711,9 +711,9 @@ Handler behaviour:
 - `preventDefault()` fires for each non-zoom event that reaches the bound control, so the page never scrolls under the control. Nothing calls `stopPropagation()`, so Apple's own handlers still see the event.
 - `deltaY` accumulates and each 100 pixels applies one step, carrying the remainder. 100 is Chromium's default `deltaY` for one wheel notch, so a mouse gets exactly one step per notch and a touchpad accumulates smoothly. A direction reversal resets the accumulator. The step is never scaled by `deltaY` magnitude: Chromium reports a wheel and a touchpad identically as `DOM_DELTA_PIXEL`, so magnitude would give a wheel a full-range jump and a touchpad an invisible nudge.
 - The value is clamped to 0 and 1 and rounded to two decimal places, because MusicKit throws on an out-of-range value and `0.7 - 0.05` is `0.6499999999999999` in binary floating point.
-- The base value is read from `window.__sidraHookedMk.volume` on every event, never from a cached local or captured instance, so a dropped MusicKit write self-corrects on the next notch and a replaced instance is used at once.
+- The base value is read from `window.__lidraHookedMk.volume` on every event, never from a cached local or captured instance, so a dropped MusicKit write self-corrects on the next notch and a replaced instance is used at once.
 
-The non-passive listener stays on the volume control. Putting it on `window` or `document` marks the whole document as a non-fast-scrollable region and makes every wheel event wait for the main thread. The volume control does not exist when the hook runs and is replaced on navigation and service switches, so the passive `pointerover` listener resolves it lazily. It is installed beside the `message` listener in the `waitForMK` callback, where the `__sidraHookInjected` guard covers it once. A `MutationObserver` is not used because one in this file previously cost 180 MiB/s (#153).
+The non-passive listener stays on the volume control. Putting it on `window` or `document` marks the whole document as a non-fast-scrollable region and makes every wheel event wait for the main thread. The volume control does not exist when the hook runs and is replaced on navigation and service switches, so the passive `pointerover` listener resolves it lazily. It is installed beside the `message` listener in the `waitForMK` callback, where the `__lidraHookInjected` guard covers it once. A `MutationObserver` is not used because one in this file previously cost 180 MiB/s (#153).
 
 ---
 
@@ -748,19 +748,19 @@ On first launch after upgrade, `config.ts` copies the legacy `language` into an 
 
 The `did-navigate` and `did-navigate-in-page` listeners capture explicit `l` parameters against the service identified by the URL host. A missing `l` leaves the preference unchanged in this URL-only handler.
 
-`initPageLanguageTracking()` reads `document.documentElement.lang` after full loads and main-frame in-page navigation when `l` is absent. Apple omits default languages from chooser URLs, so `/jp/new` with document language `ja` records Japanese without a query parameter. Sidra validates and normalises the tag with `Intl.Locale`. An unavailable or invalid document language preserves the preference. Explicit `l` queries take priority.
+`initPageLanguageTracking()` reads `document.documentElement.lang` after full loads and main-frame in-page navigation when `l` is absent. Apple omits default languages from chooser URLs, so `/jp/new` with document language `ja` records Japanese without a query parameter. Lidra validates and normalises the tag with `Intl.Locale`. An unavailable or invalid document language preserves the preference. Explicit `l` queries take priority.
 
-The asynchronous read must still match the navigation generation, live window, exact service origin, current URL and active service before it updates the preference. Unchanged values cause no write. Sidra adds no separate language control in Settings and does not infer language from the storefront.
+The asynchronous read must still match the navigation generation, live window, exact service origin, current URL and active service before it updates the preference. Unchanged values cause no write. Lidra adds no separate language control in Settings and does not infer language from the storefront.
 
 ### Storefront codes
 
-Apple Music storefront codes are ISO 3166-1 alpha-2 codes lowercased (e.g. `gb`, `us`, `ch`). Apple supports 167+ storefronts. The `?l=` parameter selects a supported UI language. The storefront determines catalogue availability. Apple controls the available translations and catalogue metadata. Sidra does not translate titles, composer names or other metadata.
+Apple Music storefront codes are ISO 3166-1 alpha-2 codes lowercased (e.g. `gb`, `us`, `ch`). Apple supports 167+ storefronts. The `?l=` parameter selects a supported UI language. The storefront determines catalogue availability. Apple controls the available translations and catalogue metadata. Lidra does not translate titles, composer names or other metadata.
 
 ---
 
 ## Apple Music Classical
 
-Sidra loads two Apple web apps from one shell. `src/musicService.ts` holds the registry that describes them. It imports nothing from `electron`, `electron-log`, or `config`, so `src/itms.ts` and the tests can import it without loading Electron.
+Lidra loads two Apple web apps from one shell. `src/musicService.ts` holds the registry that describes them. It imports nothing from `electron`, `electron-log`, or `config`, so `src/itms.ts` and the tests can import it without loading Electron.
 
 ### Service registry
 
@@ -834,7 +834,7 @@ Themes are service-agnostic. `resolveTheme()` does not branch on the active serv
 
 ## Authentication
 
-Non-issue by design. Cider's auth breaks because it uses MusicKit.js with a developer token it controls and the OAuth user-token flow. Sidra loads `music.apple.com` - Apple handles authentication entirely. Identical to opening Chrome and navigating to `music.apple.com`.
+Non-issue by design. Cider's auth breaks because it uses MusicKit.js with a developer token it controls and the OAuth user-token flow. Lidra loads `music.apple.com` - Apple handles authentication entirely. Identical to opening Chrome and navigating to `music.apple.com`.
 
 The only implementation requirement: use a named persistent partition so cookies and localStorage survive between launches.
 
@@ -842,7 +842,7 @@ The only implementation requirement: use a named persistent partition so cookies
 
 Apple's sign-in page can offer passkey and "Sign in with iPhone" options inside auth iframes served from `auth.music.apple.com` and `idmsa.apple.com`. These flows rely on WebAuthn's cross-device hybrid transport (`caBLE`) and expect Chromium's `//chrome` product layer to render the QR-code modal. Electron only ships Chromium's `//content` layer, so the modal never appears and `navigator.credentials.get()` can hang behind a spinner. No command-line switch enables this missing UI; see [electron/electron#24573](https://github.com/electron/electron/issues/24573).
 
-Sidra treats these options as unsupported desktop auth paths and hides them before users can enter the dead-end flow. Password sign-in remains Apple's own web flow.
+Lidra treats these options as unsupported desktop auth paths and hides them before users can enter the dead-end flow. Password sign-in remains Apple's own web flow.
 
 Implementation:
 
@@ -850,7 +850,7 @@ Implementation:
 - `setupAuthFrameInjection()` listens for `did-frame-finish-load`, filters subframes to `auth.music.apple.com` and `idmsa.apple.com`, then injects the CSS and fallback script with `webFrameMain.executeJavaScript()`.
 - `assets/authFrameFix.js` checks feature-specific containers independently of button text, so localised controls remain covered. It preserves every container with an input.
 - The script also scans button text and standalone captions, limits the caption fallback to two parents, and repeats these checks through a `MutationObserver`.
-- Iframe console messages prefixed with `[sidra] auth-frame hide:` are forwarded to the `auth-frame` log scope.
+- Iframe console messages prefixed with `[lidra] auth-frame hide:` are forwarded to the `auth-frame` log scope.
 - `assets/authStyleFix.css` must stay listed in `asarUnpack`; packaged builds read it from disk at runtime.
 
 ### Window close behaviour
@@ -861,7 +861,7 @@ Implementation:
 win.webContents.on('will-prevent-unload', (event) => event.preventDefault());
 ```
 
-This is standard Chromium/Electron behaviour, not CastLabs-specific. The same issue was documented for Google Music in [electron/electron#8468](https://github.com/electron/electron/issues/8468).
+This is standard Chromium/Electron behaviour. The same issue was documented for Google Music in [electron/electron#8468](https://github.com/electron/electron/issues/8468).
 
 ---
 
@@ -920,7 +920,7 @@ Each queued operation captures `documentGeneration`. A main-frame `did-navigate`
 
 ## Discord Rich Presence
 
-Uses `@xhayper/discord-rpc`. Discord Application Client ID: `1485248818688688318`. Sidra branding assets (`sidra_logo`) are uploaded to the Discord Developer Portal.
+Uses `@xhayper/discord-rpc`. Discord Application Client ID: `1485248818688688318`. Lidra branding assets (`lidra_logo`) are uploaded to the Discord Developer Portal.
 
 Reference implementation: [ytmdesktop Discord presence](https://github.com/ytmdesktop/ytmdesktop/blob/development/src/main/integrations/discord-presence/index.ts)
 
@@ -930,9 +930,9 @@ Reference implementation: [ytmdesktop Discord presence](https://github.com/ytmde
 - **Status display type**: `StatusDisplayType.DETAILS` (2), which picks `details` as the field Discord renders after that verb in the member-list line. Discord defaults the field to 0 (Name), which renders the registered application name instead of the track title.
 - **Details**: Track name (truncated to 128 chars, padded to 2 chars minimum - Discord rejects shorter strings)
 - **State**: `by ArtistName` (truncated to 128 chars, padded to 2 chars minimum)
-- **Artwork**: Apple Music CDN URLs work directly as `largeImageKey` if under 256 chars (typical range: 80-130 chars). Fall back to a Discord-hosted `sidra_logo` asset if over the limit.
+- **Artwork**: Apple Music CDN URLs work directly as `largeImageKey` if under 256 chars (typical range: 80-130 chars). Fall back to a Discord-hosted `lidra_logo` asset if over the limit.
 - **Timestamps**: When playing, calculate `startTimestamp` and `endTimestamp` from current position at send time. Omit when paused.
-- **Buttons**: Two buttons - "Sidra" (links to GitHub repo) and "Play on Apple Music" (links to track URL when available).
+- **Buttons**: Two buttons - "Lidra" (links to GitHub repo) and "Play on Apple Music" (links to track URL when available).
 - **Debounce**: 1s debounce on updates to coalesce rapid events (track change + playback state landing together). `scheduleUpdate()` resets the debounce timer; `sendActivity()` reads the position fresh from the player when it fires.
 - **Pause timeout**: Clear activity after 30s paused (ytmdesktop pattern) - courtesy to users who do not want to broadcast a paused state.
 - **Retry**: Reconnect with exponential backoff (2s base, 60s cap) on Discord IPC disconnection.
@@ -962,7 +962,7 @@ Two levels, and they are easy to confuse:
 
 | Credential | Scope | Where it lives |
 |---|---|---|
-| API key + shared secret | The Sidra application, shared by every user | `SIDRA_LASTFM_API_KEY` / `SIDRA_LASTFM_API_SECRET` env vars, else `assets/lastfm-credentials.json` (gitignored, written at build time, `asarUnpack`ed) |
+| API key + shared secret | The Lidra application, shared by every user | `LIDRA_LASTFM_API_KEY` / `LIDRA_LASTFM_API_SECRET` env vars, else `assets/lastfm-credentials.json` (gitignored, written at build time, `asarUnpack`ed) |
 | Session key | One Last.fm account | `lastfm.sessionKey` in `electron-conf` |
 
 For official Last.fm, `isConfigured()` is false when the app-level pair is missing. A valid custom endpoint needs no application credentials.
@@ -971,7 +971,7 @@ For official Last.fm, `isConfigured()` is false when the app-level pair is missi
 
 `lastfm.apiUrl` selects one full Last.fm-compatible endpoint URL at module load. An absent or `null` value selects official Last.fm. Other values must parse as HTTP or HTTPS URLs without credentials, query parameters or fragments. Invalid values disable requests without fallback. Changes need a restart.
 
-Custom mode supports multi-scrobbler's direct `track.updateNowPlaying` and `track.scrobble` ingestion. It bypasses desktop authentication, which multi-scrobbler does not support. The API key, session key and signing secret are all the dummy value `sidra`. Real Last.fm credentials are not loaded in this mode. Requests ask for `application/json` through the `Accept` header because multi-scrobbler does not read `format` from the form body. Custom requests reject redirects. Custom errors retain the API error class for queue decisions but exclude server text and transport details from logs.
+Custom mode supports multi-scrobbler's direct `track.updateNowPlaying` and `track.scrobble` ingestion. It bypasses desktop authentication, which multi-scrobbler does not support. The API key, session key and signing secret are all the dummy value `lidra`. Real Last.fm credentials are not loaded in this mode. Requests ask for `application/json` through the `Accept` header because multi-scrobbler does not read `format` from the form body. Custom requests reject redirects. Custom errors retain the API error class for queue decisions but exclude server text and transport details from logs.
 
 The existing `lastfm.enabled` preference gates playback requests in both modes. Settings and the tray label custom mode separately and omit the account and authentication controls. A saved official session remains intact. Custom error 9 does not revoke that session. The endpoint URL is not exposed to the Settings renderer.
 
@@ -982,7 +982,7 @@ The existing `lastfm.enabled` preference gates playback requests in both modes. 
 The desktop token flow, because Last.fm offers no callback for a desktop app:
 
 1. `auth.getToken` returns a token.
-2. Sidra opens `https://www.last.fm/api/auth/` with the API key and token, assembled through `URL.searchParams` so both values are percent-encoded.
+2. Lidra opens `https://www.last.fm/api/auth/` with the API key and token, assembled through `URL.searchParams` so both values are percent-encoded.
 3. `auth.getSession` is polled every 4s until the user approves, or 120s elapses.
 4. On success the session key and username are persisted, and a notification confirms it when notifications are enabled.
 
@@ -1004,15 +1004,15 @@ The hook accepts `timedMetadataDidChange` only while the current queue item has 
 
 The main process confirms that the last validated queue item is a radio station before it accepts timed metadata. It rejects control characters, unknown fields, mismatched catalogue IDs and unexpected nested fields. A 1,500 ms trailing coalescer selects the last candidate in a burst before classifying the boundary against the last delivered identity. This prevents an `A → B → A` transition burst from producing a false boundary. Replays have no effect. The hook forwards every complete candidate because only the main process owns identity and catalogue enrichment.
 
-The first timed song is partial because Sidra did not observe its start. An incomplete transition followed by the same identity is also partial. Sidra sends Now Playing for every valid radio song. A partial song can scrobble through the four-minute fallback, but only a song observed from a clean boundary can use the next-boundary shortcut. Radio scrobbles set `chosenByUser=0`, omit `streamId`, and retain that flag if a failed request enters `lastfm.pendingScrobbles`.
+The first timed song is partial because Lidra did not observe its start. An incomplete transition followed by the same identity is also partial. Lidra sends Now Playing for every valid radio song. A partial song can scrobble through the four-minute fallback, but only a song observed from a clean boundary can use the next-boundary shortcut. Radio scrobbles set `chosenByUser=0`, omit `streamId`, and retain that flag if a failed request enters `lastfm.pendingScrobbles`.
 
-Timed metadata has no song duration. Sidra adds only accepted positive position deltas to the current song. It scrobbles after 240,000 ms of active playback, or at the next clean boundary after more than 30,000 ms when it observed the song start. Pause and stalled wall time do not count. The station or episode playhead detects continuity, but its absolute value never supplies the threshold.
+Timed metadata has no song duration. Lidra adds only accepted positive position deltas to the current song. It scrobbles after 240,000 ms of active playback, or at the next clean boundary after more than 30,000 ms when it observed the song start. Pause and stalled wall time do not count. The station or episode playhead detects continuity, but its absolute value never supplies the threshold.
 
 A clean boundary remains pending until the next advancing position report confirms continuous playback. A seek or discontinuous position discards the pending outgoing scrobble, resets the current song's fallback accounting and marks the next timed song as partial. This also covers metadata that arrives before the `Seeking` state. Enabling Last.fm during a radio song removes its boundary eligibility and starts accounting at opt-in. Document replacement and `will-quit` clear all radio timing and pending-boundary state.
 
 ### Error handling
 
-`apiCall()` reads the response body and checks the API error code before the HTTP status, because Last.fm returns several of its own codes with a non-2xx status. Error 9 (invalid session key) means the user revoked Sidra at Last.fm: the session is cleared, the tray returns to **Connect to Last.fm…**, and a notification says so even when notifications are switched off.
+`apiCall()` reads the response body and checks the API error code before the HTTP status, because Last.fm returns several of its own codes with a non-2xx status. Error 9 (invalid session key) means the user revoked Lidra at Last.fm: the session is cleared, the tray returns to **Connect to Last.fm…**, and a notification says so even when notifications are switched off.
 
 ### Playback verification
 
@@ -1036,7 +1036,7 @@ A body click shows and focuses the main window, subject to action support on Lin
 
 | Platform | Delivery | Action requirements |
 |---|---|---|
-| Linux | `src/linuxNotifications.ts`, through `org.freedesktop.Notifications` | The daemon must report the `actions` capability. Otherwise, Sidra sends a plain notification |
+| Linux | `src/linuxNotifications.ts`, through `org.freedesktop.Notifications` | The daemon must report the `actions` capability. Otherwise, Lidra sends a plain notification |
 | Windows | Electron `Notification` | Native notification actions |
 | macOS | Electron `Notification` | A signed app and alert-style notifications |
 
@@ -1062,7 +1062,7 @@ Native notifications use a new ID on each delivery, not a shared replacement ID.
 A late `show` for an obsolete announcement closes that object immediately. Closed Windows banners retain their objects for actions and explicit cleanup.
 Playback refresh stops after a native close event, even when Windows retains the announcement in Action Center.
 
-**Do not gate on `Notification.isSupported()`** - in CastLabs Electron this returns `false` even when the platform fully supports notifications. Rely on the `failed` event to surface OS-level rejection instead.
+**Do not gate on `Notification.isSupported()`** - in Electron this returns `false` even when the platform fully supports notifications. Rely on the `failed` event to surface OS-level rejection instead.
 
 On Windows, `app.setAppUserModelId()` must be called before `app.whenReady()` or notifications will not appear (see [Windows: Chromium's GSMTC Bridge](#windows-chromiums-gsmtc-bridge)).
 
@@ -1085,7 +1085,7 @@ An uncertain reply does not prove that the daemon failed to display the announce
 The implementation lives in `src/integrations/notifications/index.ts`:
 
 - **Gate check**: `notificationsAvailable()` is checked before the artwork download, so a daemon-less session does no repeated network and disk work per track
-- **Artwork**: `downloadArtwork()` fetches and caches the image. Linux sends its file URL in `image-path` and keeps Sidra's logo as the application icon. Native notifications use `icon`
+- **Artwork**: `downloadArtwork()` fetches and caches the image. Linux sends its file URL in `image-path` and keeps Lidra's logo as the application icon. Native notifications use `icon`
 - **Debounce**: 1500 ms for queue-item changes and changed radio display metadata
 - **Artwork race timeout**: 500 ms. A slower download leaves the announcement without artwork
 - **Body format**: `artistName - albumName` (fields joined with ` - ` via `filter(Boolean).join(' - ')`)
@@ -1100,13 +1100,13 @@ Notifications are toggleable via an `electron-conf` boolean setting (default: on
 
 ## Settings Window
 
-Sidra has two settings surfaces: the tray menu and a Settings window. `src/settingsWindow.ts` owns the window. `src/settings.ts` owns the state and the validated `SettingsAction` union that Settings and the tray controls share.
+Lidra has two settings surfaces: the tray menu and a Settings window. `src/settingsWindow.ts` owns the window. `src/settings.ts` owns the state and the validated `SettingsAction` union that Settings and the tray controls share.
 
 The window is a local `BrowserWindow` that loads `assets/settings.html` over `file:` with `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true` and its own preload, `src/settingsPreload.ts`. It opens from the gear button beside Back, Forward and Reload, and from Ctrl+, (Cmd+, on macOS), captured by a `before-input-event` listener on the main window. `will-navigate`, `will-frame-navigate` and `will-redirect` are all prevented, and `setWindowOpenHandler` denies every new window.
 
 ### Private IPC
 
-Three channels are private to the Settings preload and appear on no other allowlist: `settings:get` and `settings:apply` (invoked from the renderer) and `settings:state` (pushed from main). The preload exposes them as `window.sidraSettings` with `getState()`, `apply(action)` and `onState(listener)`, checked against the `SettingsBridge` interface with `satisfies`.
+Three channels are private to the Settings preload and appear on no other allowlist: `settings:get` and `settings:apply` (invoked from the renderer) and `settings:state` (pushed from main). The preload exposes them as `window.lidraSettings` with `getState()`, `apply(action)` and `onState(listener)`, checked against the `SettingsBridge` interface with `satisfies`.
 
 ### Sender checks
 
@@ -1158,10 +1158,10 @@ The context menu rebuilds on track change, playback state change, and volume cha
 
 | Platform | Icon | Notes |
 |----------|------|-------|
-| macOS | `sidraTemplate.png` | Template image; OS handles dark/light automatically |
-| Windows | `sidra-tray.png` | Static icon |
-| Linux (GNOME) | `sidra-tray-outline.png` | Fixed white icon with a charcoal outline for light and dark panels, independent of the app theme |
-| Linux (other desktops) | `sidra-tray-dark.png` or `sidra-tray-light.png` | Switches on `nativeTheme.shouldUseDarkColors` and updates when the theme changes |
+| macOS | `lidraTemplate.png` | Template image; OS handles dark/light automatically |
+| Windows | `lidra-tray.png` | Static icon |
+| Linux (GNOME) | `lidra-tray-outline.png` | Fixed white icon with a charcoal outline for light and dark panels, independent of the app theme |
+| Linux (other desktops) | `lidra-tray-dark.png` or `lidra-tray-light.png` | Switches on `nativeTheme.shouldUseDarkColors` and updates when the theme changes |
 
 GNOME detection matches a complete `GNOME` token in the colon-separated `XDG_CURRENT_DESKTOP` value, regardless of case. For example, `ubuntu:GNOME` matches. Missing or unrecognised values retain the theme-selected Linux icons.
 
@@ -1263,13 +1263,13 @@ When `getShareUrl()` returns `undefined`, the Share item is omitted from the men
 
 | Context | Menu |
 |---------|------|
-| `SIDRA_DEVTOOLS=1` | View menu with "Toggle Developer Tools" |
-| macOS (normal) | Single app-name menu: "About Sidra" + separator + "Quit Sidra" (Cmd+Q via `role: 'quit'`) |
+| `LIDRA_DEVTOOLS=1` | View menu with "Toggle Developer Tools" |
+| macOS (normal) | Single app-name menu: "About Lidra" + separator + "Quit Lidra" (Cmd+Q via `role: 'quit'`) |
 | Linux / Windows | `Menu.setApplicationMenu(null)` - no menu bar |
 
 The About item uses `getMenuIcon('about')`, which resolves to the `info.circle` SF Symbol on macOS Tahoe or later (undefined on earlier versions, in which case the icon property is omitted entirely).
 
-The top-level `productName: "Sidra"` in `package.json` is the single source for the product display name. electron-builder inherits this field without a `build.productName` override. Runtime labels use `app.getName()` directly or through `getProductInfo().productName`. Technical identifiers, URLs and storage names remain unchanged.
+The top-level `productName: "Lidra"` in `package.json` is the single source for the product display name. electron-builder inherits this field without a `build.productName` override. Runtime labels use `app.getName()` directly or through `getProductInfo().productName`. Technical identifiers, URLs and storage names remain unchanged.
 
 `showAboutWindow()` is exported from `src/aboutWindow.ts` and imported by `src/main.ts` for use in the app menu. Both the About window and the splash window set `fullscreenable: false` and `fullscreen: false` to prevent them entering full-screen mode.
 
@@ -1287,7 +1287,7 @@ The top-level `productName: "Sidra"` in `package.json` is the single source for 
 |---|---|
 | `process.env.APPIMAGE` is set | AppImage - enable updater |
 | `process.platform === 'win32' && app.isPackaged` | NSIS - enable updater |
-| `SIDRA_DISABLE_AUTO_UPDATE=1` env var set | Force-disable regardless of packaging |
+| `LIDRA_DISABLE_AUTO_UPDATE=1` env var set | Force-disable regardless of packaging |
 | All other cases | Notification-only mode |
 
 `app-update.yml` is present in all packaged builds including deb/rpm/Nix. Runtime detection in `isAutoUpdateSupported()` prevents updater initialisation even when the file is present; log noise is not a concern in practice.
@@ -1296,9 +1296,9 @@ The top-level `productName: "Sidra"` in `package.json` is the single source for 
 
 `electron-updater` must be `require()`d inside `initAutoUpdate()` only - never at module top level. On unsupported platforms the module must never load. Verify correct behaviour by checking log output: `autoUpdate` scope messages must not appear on deb, rpm, or Nix builds.
 
-### CastLabs ECS compatibility
+### Electron compatibility
 
-`electron-updater` implements its own download/install pipeline and does not use Electron's built-in `autoUpdater`. All APIs it uses are unmodified in CastLabs ECS. The known `app.relaunch()` bug (CastLabs issue #164) does not affect `AppImageUpdater` - it spawns the new binary via `child_process.spawn()` directly.
+`electron-updater` implements its own download/install pipeline and does not use Electron's built-in `autoUpdater`. The known `app.relaunch()` bug (electron/electron#164) does not affect `AppImageUpdater` - it spawns the new binary via `child_process.spawn()` directly.
 
 ### Manifest filenames
 
@@ -1311,7 +1311,7 @@ electron-updater manifest filenames are hardcoded and cannot be changed:
 
 - Windows builds are unsigned. `configureAutoUpdate()` detects `NsisUpdater` and replaces `verifyUpdateCodeSignature` with a verifier that resolves to `null`. Assigning `false` would not work because the electron-updater setter ignores falsy values. Remove this override when Windows builds are signed.
 - AppImage `artifactName` must omit the version component - use `${productName}-${os}-${arch}.${ext}`. Including the version causes filename changes that break desktop shortcuts after update.
-- Future package managers (Scoop, Chocolatey) must set `SIDRA_DISABLE_AUTO_UPDATE=1` in their install manifests to suppress the updater.
+- Future package managers (Scoop, Chocolatey) must set `LIDRA_DISABLE_AUTO_UPDATE=1` in their install manifests to suppress the updater.
 
 ---
 
@@ -1321,9 +1321,9 @@ electron-updater manifest filenames are hardcoded and cannot be changed:
 
 | Feature | Implementation | Notes |
 |---|---|---|
-| Apple Music web app (DRM) | CastLabs Electron + `music.apple.com` | Widevine CDM auto-installs |
+| Apple Music web app | Electron + `music.apple.com` | Native audio pipeline, no Chromium DRM |
 | Auth | Apple's own web flow | Persistent partition; no developer tokens |
-| MPRIS (Linux) | `dbus-next` D-Bus service | `org.mpris.MediaPlayer2.sidra` |
+| MPRIS (Linux) | `dbus-next` D-Bus service | `org.mpris.MediaPlayer2.lidra` |
 | MPRIS primitives | play/pause/next/prev/seek/stop/OpenUri | Typed IPC with capability updates, bounded seeking and ordered Stop |
 | MPRIS metadata | title/artist/album/artwork/duration/trackId | Queue-item metadata, effective duration and timed radio songs |
 | MPRIS volume | Two-way with pending-echo queue | musicKitHook.js + main MPRIS plugin |
@@ -1340,8 +1340,8 @@ electron-updater manifest filenames are hardcoded and cannot be changed:
 
 | Feature | Implementation | Notes |
 |---|---|---|
-| macOS Now Playing | Chromium mediaSession → MPNowPlayingInfoCenter | Bundle name "Sidra" from productName |
-| Windows GSMTC | Chromium mediaSession → GSMTC | `app.setAppUserModelId('com.wimpysworld.sidra')` |
+| macOS Now Playing | Chromium mediaSession → MPNowPlayingInfoCenter | Bundle name "Lidra" from productName |
+| Windows GSMTC | Chromium mediaSession → GSMTC | `app.setAppUserModelId('com.evangit2.lidra')` |
 | Explicit `navigator.mediaSession` updates | musicKitHook.js | Supplement Apple's own updates |
 | System tray | Electron `Tray` | Prev/play-pause/next + show/hide |
 | macOS `.app` build | electron-builder | DMG |
@@ -1357,14 +1357,14 @@ electron-updater manifest filenames are hardcoded and cannot be changed:
 | Splash screen | `assets/splash.html` | Localised loading text via `loading.json` |
 | Content readiness polling | `CONTENT_READY_SELECTOR` in `src/contentReady.ts`: `[data-testid="app-container"] amp-playback-controls-play[hydrated]` | Waits for the UI to hydrate before removing splash; both services share the selector |
 | About window | Frameless `BrowserWindow` + `assets/about.html` | Localised labels via `about.json` |
-| Navigation bar | `assets/navigationBar.js` injected post-load | Back/forward/reload buttons in sidebar; localised aria-labels substituted for `__SIDRA_NAV_LABELS__` at read time |
+| Navigation bar | `assets/navigationBar.js` injected post-load | Back/forward/reload buttons in sidebar; localised aria-labels substituted for `__LIDRA_NAV_LABELS__` at read time |
 | Auth iframe filtering | `authStyleFix.css` + `webFrameMain.executeJavaScript()` | Hides unsupported passkey and "Sign in with iPhone" desktop flows |
 | Zoom factor preference | `zoomFactor` in `electron-conf` | 1.0x to 2.0x via tray submenu |
 | Wedge detector | `src/wedgeDetector.ts` | Auto-skip on playback stall. Each attempt logs at `warn` with `source=wedge channel=player:next reason=playback-stalled attempt=<current>/3 result=sent|dropped` |
 | Artwork cache | `src/artwork.ts` | UUID-based filenames, 7-day expiry, atomic writes |
 | Pause timer utility | `src/pauseTimer.ts` | `createPauseTimer()` shared by tray, dock, Discord |
 | Update checking (non-auto-update) | `src/update.ts` | GitHub API check for deb/rpm/Nix/DMG platforms |
-| Service worker cache clearing | `clearData()` on the `persist:sidra` partition in `initSession()` | Clears service workers and cache for the service origins on startup |
+| Service worker cache clearing | `clearData()` on the `persist:lidra` partition in `initSession()` | Clears service workers and cache for the service origins on startup |
 | Last.fm scrobbling | `src/integrations/lastfm` + Last.fm API 2.0 | Opt-in; browser auth from the tray, per-user session key in `electron-conf` |
 | Controller navigation | Gamepad API in `preload.ts` + `controllerIPC.ts` | Standard mapping; D-pad, Select, and guarded Back in both services |
 
@@ -1394,7 +1394,7 @@ electron-updater manifest filenames are hardcoded and cannot be changed:
 | Apple blocks Electron user agent | High | Low | Spoof Chrome UA on all requests |
 | Apple changes MusicKit.js API | Medium | Low | MusicKit.js is a public developer API with versioning |
 | Apple renames the `chrome-volume` class | Low | Medium | Scroll-to-change-volume stops responding; every other volume path is unaffected. The token is the only DOM detail the hook depends on, and no Svelte scope hash is matched, so an Apple rebuild alone does not break it |
-| CastLabs Electron lags Electron releases | Low | Medium | Only affects security patching cadence; v43.0.0+wvcus, tracking close to mainline |
+| Electron lags releases | Low | Medium | Only affects security patching cadence |
 | Live radio stations crash | Medium | Confirmed | Known issue in apple-music-wrapper; investigate `did-crash` handler |
 | CSP blocks script injection | Low | Very low | `executeJavaScript()` bypasses page CSP in Electron |
 | Apple legal action | Medium | Very low | Multiple similar apps exist and have for years; requires Apple Music subscription |

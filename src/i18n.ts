@@ -379,7 +379,7 @@ export function getLastfmConnectFailedText(): string {
  * Placeholder for JSON labels in assets/navigationBar.js. Injection through
  * executeJavaScript() has no query parameters, so loadAssets() substitutes it.
  */
-export const NAV_LABELS_TOKEN = '__SIDRA_NAV_LABELS__';
+export const NAV_LABELS_TOKEN = '__LIDRA_NAV_LABELS__';
 
 /** Resolve the labels for the injected navigation bar. */
 export function getNavigationStrings(): {

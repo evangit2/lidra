@@ -1,5 +1,5 @@
-// Write assets/lastfm-credentials.json from SIDRA_LASTFM_API_KEY and
-// SIDRA_LASTFM_API_SECRET. npm's prebuild hook and the justfile build recipe
+// Write assets/lastfm-credentials.json from LIDRA_LASTFM_API_KEY and
+// LIDRA_LASTFM_API_SECRET. npm's prebuild hook and the justfile build recipe
 // both call this script, because npx tsc runs no npm hook.
 //
 // Without environment credentials, local builds keep a populated file or write
@@ -15,12 +15,12 @@ const {
   validateCredentialPair,
 } = require("./release-credentials.cjs");
 
-const apiKey = process.env.SIDRA_LASTFM_API_KEY || "";
-const apiSecret = process.env.SIDRA_LASTFM_API_SECRET || "";
+const apiKey = process.env.LIDRA_LASTFM_API_KEY || "";
+const apiSecret = process.env.LIDRA_LASTFM_API_SECRET || "";
 const credentialsAvailable = validateCredentialPair(
   process.env,
-  "SIDRA_LASTFM_API_KEY",
-  "SIDRA_LASTFM_API_SECRET",
+  "LIDRA_LASTFM_API_KEY",
+  "LIDRA_LASTFM_API_SECRET",
   isOfficialBuild(),
 );
 

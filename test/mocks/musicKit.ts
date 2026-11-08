@@ -9,9 +9,9 @@ const hookScript = fs
     path.join(__dirname, "..", "..", "assets", "musicKitHook.js"),
     "utf-8",
   )
-  .replace("__SIDRA_DOCUMENT_GENERATION__", "1")
+  .replace("__LIDRA_DOCUMENT_GENERATION__", "1")
   .replace(
-    "__SIDRA_SERVICE_HOSTS__",
+    "__LIDRA_SERVICE_HOSTS__",
     JSON.stringify(allServices().map((service) => service.host)),
   );
 
@@ -193,8 +193,8 @@ export function createHarness({
     addEventListener: ReturnType<typeof vi.fn>;
     navigator: unknown;
     location: { hostname: string; origin: string };
-    __sidraHookedMk?: unknown;
-    __sidra?: Record<string, (...args: unknown[]) => unknown>;
+    __lidraHookedMk?: unknown;
+    __lidra?: Record<string, (...args: unknown[]) => unknown>;
   }
   const window: HarnessWindow = {
     addEventListener: vi.fn(

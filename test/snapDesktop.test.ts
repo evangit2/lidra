@@ -40,12 +40,12 @@ describe("Snap desktop backport", () => {
       helper: unknown,
       options: unknown,
     ) => {
-      createDescriptor(arch: number): Promise<{ apps: { sidra: Record<string, unknown> } }>;
+      createDescriptor(arch: number): Promise<{ apps: { lidra: Record<string, unknown> } }>;
       buildSnap(params: Record<string, unknown>): Promise<void>;
     };
     const pkg = require("../package.json");
     const helper = {
-      getDesktopFileName: () => "sidra",
+      getDesktopFileName: () => "lidra",
       isElectronVersionGreaterOrEqualThan: () => true,
       icons: Promise.resolve([]),
       getDescription: () => pkg.description,
@@ -54,19 +54,19 @@ describe("Snap desktop backport", () => {
       },
     };
     const core = new SnapCore24({
-      executableName: "sidra",
+      executableName: "lidra",
       appInfo: { version: pkg.version, productName: pkg.productName },
       packagerOptions: { effectiveOptionComputed: async () => true },
     }, helper, pkg.build.snapcraft.core24);
     const snap = await core.createDescriptor(arch);
-    expect(snap.apps.sidra).not.toHaveProperty("desktop");
-    expect(snap.apps.sidra.command).toBe("command.sh");
-    const stageDir = mkdtempSync(join(tmpdir(), "sidra-snap-desktop-"));
+    expect(snap.apps.lidra).not.toHaveProperty("desktop");
+    expect(snap.apps.lidra.command).toBe("command.sh");
+    const stageDir = mkdtempSync(join(tmpdir(), "lidra-snap-desktop-"));
     try {
       mkdirSync(join(stageDir, "app"));
       await core.buildSnap({ snap, stageDir, appOutDir: join(stageDir, "app") });
-      expect(readFileSync(join(stageDir, "snap/gui/sidra.desktop"), "utf8"))
-        .toContain("Exec=sidra %U");
+      expect(readFileSync(join(stageDir, "snap/gui/lidra.desktop"), "utf8"))
+        .toContain("Exec=lidra %U");
       expect(readFileSync(join(stageDir, "snap/snapcraft.yaml"), "utf8"))
         .not.toContain("desktop: meta/gui/");
     } finally {

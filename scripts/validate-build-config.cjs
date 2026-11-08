@@ -15,7 +15,7 @@ function main() {
   );
   const config = pkg.build ?? {};
   console.log(
-    '  \u2713 electron-builder config: read from package.json "build" (no schema check; electron-builder exposes no public validator)',
+    '  \\u2713 electron-builder config: read from package.json "build" (no schema check; electron-builder exposes no public validator)',
   );
 
   // Reject obsolete options that electron-builder can otherwise ignore.
@@ -42,24 +42,109 @@ function main() {
       );
     }
   }
-  console.log("  \u2713 no deprecated options detected");
+  console.log("  \\u2713 no deprecated options detected");
 
-  if (config.afterPack !== "build/afterPack.cjs") {
+  // (a) devDependencies.electron must be a stock semver range, not a git/castlabs URL.
+  const electronDep = pkg.devDependencies?.electron;
+  if (typeof electronDep !== "string" || electronDep.trim() === "") {
+    throw new Error("devDependencies.electron must be a non-empty string");
+  }
+  if (
+    electronDep.includes("castlabs") ||
+    electronDep.includes("github:") ||
+    electronDep.includes("git+") ||
+    electronDep.includes("://")
+  ) {
     throw new Error(
-      "build.afterPack must use build/afterPack.cjs for macOS VMP signing",
+      `devDependencies.electron must be a stock semver range, not a git/castlabs URL: ${electronDep}`,
     );
   }
-  if (config.afterSign !== "build/afterSign.cjs") {
+  // Accept common semver ranges: ^45.2.3, ~45.2.3, 45.2.3, >=45.0.0, etc.
+  if (!/^[\^~<>= ]*\d+\.\d+\.\d+/.test(electronDep.trim())) {
     throw new Error(
-      "build.afterSign must use build/afterSign.cjs for Windows VMP signing",
+      `devDependencies.electron must be a stock semver range: ${electronDep}`,
     );
   }
-  if (config.win?.signAndEditExecutable === false) {
+  console.log(`  \\u2713 stock Electron: ${electronDep}`);
+
+  // (b) build.publish must be {provider: github, owner: evangit2, repo: lidra}
+  const publish = config.publish;
+  if (
+    publish?.provider !== "github" ||
+    publish?.owner !== "evangit2" ||
+    publish?.repo !== "lidra"
+  ) {
     throw new Error(
-      "build.win.signAndEditExecutable must not be false because Windows VMP signing depends on afterSign",
+      'build.publish must be {provider: \"github\", owner: \"evangit2\", repo: \"lidra\"}',
     );
   }
-  console.log("  \u2713 VMP hooks: macOS afterPack, Windows afterSign");
+  console.log("  \\u2713 publish: github evangit2/lidra");
+
+  // (c) build.appId must be io.github.evangit2.lidra
+  if (config.appId !== "io.github.evangit2.lidra") {
+    throw new Error('build.appId must be \"io.github.evangit2.lidra\"');
+  }
+  console.log("  \\u2713 appId: io.github.evangit2.lidra");
+
+  // (d) All release targets must remain present.
+  const linuxTargets = (config.linux?.target ?? []).map((t) =>
+    String(t).toLowerCase(),
+  );
+  for (const required of ["appimage", "deb", "rpm", "flatpak", "snap"]) {
+    if (!linuxTargets.includes(required)) {
+      throw new Error(`build.linux.target must include \"${required}\"`);
+    }
+  }
+  const macTargets = (config.mac?.target ?? []).map((t) =>
+    String(t).toLowerCase(),
+  );
+  if (!macTargets.includes("dmg")) {
+    throw new Error('build.mac.target must include \"dmg\"');
+  }
+  const winTargets = (config.win?.target ?? []).map((t) =>
+    String(t).toLowerCase(),
+  );
+  if (!winTargets.includes("nsis")) {
+    throw new Error('build.win.target must include \"nsis\"');
+  }
+  console.log("  \\u2713 release targets: linux (AppImage, deb, rpm, flatpak, snap), mac (dmg), win (nsis)");
+
+  // (e) No EVS/VMP references may remain in build/, scripts/, justfile, package.json.
+  const scanTargets = [];
+  for (const file of fs.readdirSync(path.join(projectDir, "build"))) {
+    if (!file.endsWith(".cjs") && !file.endsWith(".js")) continue;
+    scanTargets.push(path.join(projectDir, "build", file));
+  }
+  for (const file of fs.readdirSync(path.join(projectDir, "scripts"))) {
+    if (!file.endsWith(".cjs") && !file.endsWith(".js")) continue;
+    const full = path.join(projectDir, "scripts", file);
+    // Exclude this validator itself — it contains the forbidden strings as check logic.
+    if (path.basename(full) === "validate-build-config.cjs") continue;
+    scanTargets.push(full);
+  }
+  scanTargets.push(path.join(projectDir, "justfile"));
+  scanTargets.push(path.join(projectDir, "package.json"));
+  const forbidden = /EVS|VMP/;
+  for (const filePath of scanTargets) {
+    let content;
+    try {
+      content = fs.readFileSync(filePath, "utf8");
+    } catch {
+      continue;
+    }
+    if (forbidden.test(content)) {
+      throw new Error(
+        `${path.relative(projectDir, filePath)} must not contain EVS/VMP references`,
+      );
+    }
+    // Also reject castlabs URLs that would indicate a forked Electron.
+    if (/castlabs/i.test(content)) {
+      throw new Error(
+        `${path.relative(projectDir, filePath)} must not contain castlabs references`,
+      );
+    }
+  }
+  console.log("  \\u2713 no EVS/VMP/castlabs references in build/, scripts/, justfile, package.json");
 
   const zypakStrategy = config.flatpak?.finishArgs?.filter((arg) =>
     arg.startsWith("--env=ZYPAK_ZYGOTE_STRATEGY_SPAWN="),
@@ -69,10 +154,10 @@ function main() {
     zypakStrategy[0] !== "--env=ZYPAK_ZYGOTE_STRATEGY_SPAWN=0"
   ) {
     throw new Error(
-      "build.flatpak.finishArgs must set --env=ZYPAK_ZYGOTE_STRATEGY_SPAWN=0 exactly once to prevent the CastLabs startup crash",
+      "build.flatpak.finishArgs must set --env=ZYPAK_ZYGOTE_STRATEGY_SPAWN=0 exactly once",
     );
   }
-  console.log("  \u2713 Flatpak: Zypak spawn strategy disabled, sandbox retained");
+  console.log("  \\u2713 Flatpak: Zypak spawn strategy disabled, sandbox retained");
 
   const nsis = config.nsis;
   if (nsis?.oneClick !== false) {
@@ -99,7 +184,7 @@ function main() {
     throw new Error("build.nsis.deleteAppDataOnUninstall must remain false");
   }
   console.log(
-    "  \u2713 NSIS installer: assisted, per-user by default, install scope and directory selectable",
+    "  \\u2713 NSIS installer: assisted, per-user by default, install scope and directory selectable",
   );
 
   // FPM requires the author's email for the deb/rpm maintainer field.
@@ -122,7 +207,7 @@ function main() {
   } else {
     throw new Error("package.json 'author' field is missing.");
   }
-  console.log("  \u2713 package.json author email: present");
+  console.log("  \\u2713 package.json author email: present");
 
   // Pin the D-Bus commands for launcher controls, not their labels.
   // Match the MPRIS integration's lowercased app.getName(), which prefers
@@ -181,7 +266,7 @@ function main() {
       );
     }
   }
-  console.log(`  \u2713 Linux desktop actions: wired to ${busName}`);
+  console.log(`  \\u2713 Linux desktop actions: wired to ${busName}`);
 
   // electron-builder installs every PNG from the Linux icon directory under
   // hicolor/<size>x<size>/apps. Unregistered sizes are not discoverable. The
@@ -226,8 +311,17 @@ function main() {
     );
   }
   console.log(
-    `  \u2713 Linux icon set: ${iconSizes.sort((a, b) => a - b).join(", ")} in registered hicolor sizes`,
+    `  \\u2713 Linux icon set: ${iconSizes.sort((a, b) => a - b).join(", ")} in registered hicolor sizes`,
   );
+
+  // afterPack must remain the Flatpak AppStream hook; afterSign must be absent.
+  if (config.afterPack !== "build/afterPack.cjs") {
+    throw new Error('build.afterPack must be \"build/afterPack.cjs\"');
+  }
+  if (config.afterSign != null) {
+    throw new Error("build.afterSign must not be set (VMP pipeline removed)");
+  }
+  console.log("  \\u2713 hooks: afterPack is Flatpak AppStream only, afterSign removed");
 
   console.log("\nAll configuration checks passed.");
 }
@@ -235,6 +329,6 @@ function main() {
 try {
   main();
 } catch (e) {
-  console.error("\n  \u2717 " + e.message);
+  console.error("\n  \\u2717 " + e.message);
   process.exit(1);
 }

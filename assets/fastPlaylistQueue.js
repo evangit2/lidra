@@ -1,8 +1,8 @@
 // Apple's page makes MusicKit fetch a library playlist one page at a time before playback.
 // A saved track list lets MusicKit build the same queue without those requests.
 (function () {
-  if (window.__sidraFastQueueInjected) return;
-  window.__sidraFastQueueInjected = true;
+  if (window.__lidraFastQueueInjected) return;
+  window.__lidraFastQueueInjected = true;
 
   const PAGE_SIZE = 100;
   const FETCH_CONCURRENCY = 8;
@@ -43,7 +43,7 @@
         resolve();
       };
       try {
-        const open = indexedDB.open("sidra-fast-queue", 3);
+        const open = indexedDB.open("lidra-fast-queue", 3);
         open.onupgradeneeded = () => {
           for (const name of [...open.result.objectStoreNames]) open.result.deleteObjectStore(name);
           for (const name of ["meta", "lists"]) open.result.createObjectStore(name, { keyPath: "id" });
@@ -144,7 +144,7 @@
       if (cleared) return;
       await wait(500);
     }
-    console.warn("[Sidra] failed to delete saved playlist tracks");
+    console.warn("[Lidra] failed to delete saved playlist tracks");
   }
 
   // MusicKit drops tracks without play parameters, which would shift later queue positions.
@@ -235,7 +235,7 @@
     try {
       items = await currentList(mk, playlists[0]);
     } catch (_) {
-      console.warn("[Sidra] could not prepare playlist tracks, using the standard queue");
+      console.warn("[Lidra] could not prepare playlist tracks, using the standard queue");
     }
     if (generation !== queueGeneration) return mk.queue;
     // Shuffle may have been switched on while the list was fetched.
@@ -259,7 +259,7 @@
     } catch (_) {
       // Fall through to Apple's request.
     }
-    console.warn("[Sidra] fast playlist start failed, using the standard queue");
+    console.warn("[Lidra] fast playlist start failed, using the standard queue");
     return generation === queueGeneration ? setQueue(options) : mk.queue;
   }
 
@@ -306,7 +306,7 @@
     prewarmedPath = path;
     const match = PLAYLIST_PATH.exec(path);
     if (match && !tooLarge.has(match[1])) {
-      currentList(mk, match[1]).catch(() => console.warn("[Sidra] failed to prepare playlist tracks"));
+      currentList(mk, match[1]).catch(() => console.warn("[Lidra] failed to prepare playlist tracks"));
     }
   }, 1000);
 })();

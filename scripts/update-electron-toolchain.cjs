@@ -1,18 +1,13 @@
 #!/usr/bin/env node
 "use strict";
 
-// Keep package.json on stable CastLabs Electron, electron-builder and
+// Keep package.json on stable Electron, electron-builder and
 // electron-updater releases without installing or building dependencies.
-//
-// Read git tags because the Widevine-enabled Electron dependency comes from
-// castlabs/electron-releases, not the npm registry.
 
 const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
 
 const packageJsonPath = "package.json";
-// Require the Widevine CDM variant for DRM playback and exclude prereleases.
-const castLabsStableTagPattern = /^v(\d+)\.(\d+)\.(\d+)\+wvcus$/;
 const electronBuilderRepo =
   "https://github.com/electron-userland/electron-builder.git";
 
@@ -33,8 +28,8 @@ function compareTriplets(left, right) {
   return 0;
 }
 
-function parseCastLabsTag(tag) {
-  const match = castLabsStableTagPattern.exec(tag);
+function parseTag(tag) {
+  const match = /^v(\d+)\.(\d+)\.(\d+)$/.exec(tag);
   if (match === null) {
     return null;
   }
@@ -42,12 +37,12 @@ function parseCastLabsTag(tag) {
   return match.slice(1).map((part) => Number.parseInt(part, 10));
 }
 
-function latestCastLabsElectronTag() {
+function latestElectronTag() {
   const refs = run("git", [
     "ls-remote",
     "--tags",
-    "https://github.com/castlabs/electron-releases.git",
-    "refs/tags/v*+wvcus",
+    "https://github.com/electron/electron.git",
+    "refs/tags/v*",
   ]);
 
   // Drop the ^{} commit refs that git ls-remote emits alongside annotated tags.
@@ -56,16 +51,16 @@ function latestCastLabsElectronTag() {
     .map((line) => line.split(/\s+/)[1])
     .filter((ref) => ref !== undefined && !ref.endsWith("^{}"))
     .map((ref) => ref.replace("refs/tags/", ""))
-    .map((tag) => ({ tag, parts: parseCastLabsTag(tag) }))
+    .map((tag) => ({ tag, parts: parseTag(tag) }))
     .filter((entry) => entry.parts !== null)
     .sort((left, right) => compareTriplets(left.parts, right.parts))
     .at(-1);
 
   if (latest === undefined) {
-    throw new Error("No stable CastLabs Electron WVCUS tags found");
+    throw new Error("No stable Electron tags found");
   }
 
-  return latest.tag;
+  return latest.tag.replace(/^v/, "");
 }
 
 // Both packages share a repository. Match the <package>@ prefix to keep their
@@ -120,7 +115,7 @@ function setDependency(packageJson, section, name, value) {
 
 const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
 const targets = {
-  electron: `github:castlabs/electron-releases#${latestCastLabsElectronTag()}`,
+  electron: `^${latestElectronTag()}`,
   "electron-builder": `^${latestElectronBuilderTag("electron-builder")}`,
   "electron-updater": `^${latestElectronBuilderTag("electron-updater")}`,
 };

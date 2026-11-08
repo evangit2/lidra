@@ -156,9 +156,6 @@ jobs:
   build:
     name: Build (${{ matrix.os }}-${{ matrix.arch }})
     needs: [lint-code, lint-actions, test-config, test-code]
-    # EVS secrets exist only in release-evs, whose deployment policy admits
-    # version tags. A pull request uses ci, which carries no EVS secrets.
-    environment: ${{ startsWith(github.ref, 'refs/tags/') && 'release-evs' || 'ci' }}
     # always() overrides the transitive skip from version-gate on non-tag runs.
     # The success checks still block failed dependencies, which always() permits.
     if: >-
@@ -214,9 +211,6 @@ jobs:
           key: electron-${{ runner.os }}-${{ matrix.arch }}-${{ hashFiles('package-lock.json') }}
       - name: Install dependencies
         run: npm ci
-      - name: Install uv
-        if: matrix.os == 'macos' || matrix.os == 'windows'
-        uses: astral-sh/setup-uv@v10.3.3
       - name: Install packaging tooling
         if: matrix.os == 'linux'
         run: |
@@ -241,13 +235,10 @@ jobs:
       - name: Compile TypeScript
         run: npm run build
         env:
-          SIDRA_LASTFM_API_KEY: ${{ startsWith(github.ref, 'refs/tags/') && secrets.SIDRA_LASTFM_API_KEY || '' }}
-          SIDRA_LASTFM_API_SECRET: ${{ startsWith(github.ref, 'refs/tags/') && secrets.SIDRA_LASTFM_API_SECRET || '' }}
+          LIDRA_LASTFM_API_KEY: ${{ startsWith(github.ref, 'refs/tags/') && secrets.LIDRA_LASTFM_API_KEY || '' }}
+          LIDRA_LASTFM_API_SECRET: ${{ startsWith(github.ref, 'refs/tags/') && secrets.LIDRA_LASTFM_API_SECRET || '' }}
       - name: Build distributables
         run: npx electron-builder --publish never ${{ matrix.targets }}
-        env:
-          EVS_ACCOUNT_NAME: ${{ startsWith(github.ref, 'refs/tags/') && secrets.EVS_ACCOUNT_NAME || '' }}
-          EVS_PASSWD: ${{ startsWith(github.ref, 'refs/tags/') && secrets.EVS_PASSWD || '' }}
       - name: Validate Flatpak AppStream metadata
         if: matrix.os == 'linux'
         run: appstreamcli validate --no-net release/metainfo/*.metainfo.xml
@@ -270,7 +261,7 @@ jobs:
             fi
           done
       # Snapcraft host mode needs root, so this cannot join the step above:
-      # that would run every Linux target, and EVS signing, as root.
+      # that would run every Linux target as root.
       - name: Build snap
         if: matrix.os == 'linux' && github.event_name != 'pull_request'
         run: |
@@ -279,7 +270,7 @@ jobs:
       - name: Upload artefacts
         uses: actions/upload-artifact@v7
         with:
-          name: sidra-${{ matrix.os }}-${{ matrix.arch }}
+          name: lidra-${{ matrix.os }}-${{ matrix.arch }}
           path: ${{ env.RELEASE_ARTEFACTS }}
           retention-days: 7
 
@@ -329,7 +320,7 @@ jobs:
       - name: Download Linux artefacts
         uses: actions/download-artifact@v8
         with:
-          pattern: sidra-linux-*
+          pattern: lidra-linux-*
           path: release/
           merge-multiple: true
       - name: Install snapcraft
@@ -357,7 +348,7 @@ jobs:
             snapcraft release "$SNAP_NAME" "$revision" "$SNAP_CHANNEL"
           done
         env:
-          SNAP_NAME: sidra
+          SNAP_NAME: lidra
           SNAP_CHANNEL: stable
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
       - name: Show Snap Store revisions
@@ -367,7 +358,7 @@ jobs:
             snapcraft revisions "$SNAP_NAME" --arch "$arch"
           done
         env:
-          SNAP_NAME: sidra
+          SNAP_NAME: lidra
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
 
   nix-hash:

@@ -47,6 +47,15 @@ interface StoreSchema {
   'classical.language': string | null;
   zoomFactor: number;
   musicService: MusicServiceId;
+  'audio.enabled': boolean;
+  'audio.quality': string;
+  'audio.keyTransport': string;
+  'audio.keyService': string;
+  'audio.keyToken': string | null;
+  'audio.ffmpegPath': string | null;
+  'audio.emeShim': boolean;
+  'audio.decryptorService': string;
+  'audio.manifestService': string;
 }
 
 const store = new Conf<StoreSchema>();
@@ -72,6 +81,12 @@ function getConfigValue<K extends keyof StoreSchema>(key: K, defaultValue: Store
 function getConfigValueOptional<K extends keyof StoreSchema>(key: K): StoreSchema[K] | undefined {
   if (!store.has(key)) return undefined;
   return store.get(key);
+}
+
+/** Environment override for headless/CI setups and power users. */
+function envString(name: string): string | undefined {
+  const value = process.env[name];
+  return value !== undefined && value.length > 0 ? value : undefined;
 }
 
 /**
@@ -371,4 +386,111 @@ export function getLanguageFor(id: MusicServiceId): string | null | undefined {
 
 export function setLanguageFor(id: MusicServiceId, lang: string | null): void {
   SERVICE_ACCESSORS[id].setLanguage(lang);
+}
+
+/** Quality preferences offered in Settings, best first. */
+export const AUDIO_QUALITY_PREFERENCES = [
+  'hi-res',
+  'lossless',
+  'atmos',
+  'dolby-audio',
+  'aac',
+] as const;
+
+export type AudioQualityPreference = (typeof AUDIO_QUALITY_PREFERENCES)[number];
+
+/** Read `audio.enabled`, defaulting to `true`; the native pipeline is the point of Lidra. */
+export function getAudioEnabled(): boolean {
+  const env = envString('LIDRA_AUDIO_ENABLED');
+  if (env !== undefined) return env !== '0' && env.toLowerCase() !== 'false';
+  return getConfigValue('audio.enabled', true);
+}
+
+/** Persist whether the native audio pipeline replaces the page's DRM playback. */
+export function setAudioEnabled(enabled: boolean): void {
+  setConfigValue('audio.enabled', enabled);
+}
+
+/** Read `audio.quality`, defaulting to `'auto'` (best available). */
+export function getAudioQuality(): AudioQualityPreference | 'auto' {
+  const value = envString('LIDRA_AUDIO_QUALITY') ?? getConfigValue('audio.quality', 'auto');
+  return (AUDIO_QUALITY_PREFERENCES as readonly string[]).includes(value)
+    ? (value as AudioQualityPreference)
+    : 'auto';
+}
+
+/** Persist the preferred minimum quality tier. */
+export function setAudioQuality(quality: AudioQualityPreference | 'auto'): void {
+  setConfigValue('audio.quality', quality);
+}
+
+/** Read `audio.keyTransport`; `socket` covers TCP and Unix sockets. */
+export function getAudioKeyTransport(): 'socket' | 'http' {
+  const value = envString('LIDRA_KEY_TRANSPORT') ?? getConfigValue('audio.keyTransport', 'socket');
+  return value === 'http' ? 'http' : 'socket';
+}
+
+/** Persist the key service transport. */
+export function setAudioKeyTransport(transport: 'socket' | 'http'): void {
+  setConfigValue('audio.keyTransport', transport);
+}
+
+/** Read the key service address (`host:port`, `unix:/path`, or an http URL). */
+export function getAudioKeyService(): string {
+  return envString('LIDRA_KEY_SERVICE') ?? getConfigValue('audio.keyService', '');
+}
+
+/** Persist the key service address. */
+export function setAudioKeyService(address: string): void {
+  setConfigValue('audio.keyService', address);
+}
+
+/** Read the optional bearer token for an HTTP key service. */
+export function getAudioKeyToken(): string | null | undefined {
+  return envString('LIDRA_KEY_TOKEN') ?? getConfigValueOptional('audio.keyToken');
+}
+
+/** Persist the optional bearer token for an HTTP key service. */
+export function setAudioKeyToken(token: string | null): void {
+  setConfigValue('audio.keyToken', token);
+}
+
+/** Read an explicit ffmpeg path, or undefined to use PATH. */
+export function getAudioFfmpegPath(): string | null | undefined {
+  return envString('LIDRA_FFMPEG') ?? getConfigValueOptional('audio.ffmpegPath');
+}
+
+/** Persist an explicit ffmpeg path. */
+export function setAudioFfmpegPath(path: string | null): void {
+  setConfigValue('audio.ffmpegPath', path);
+}
+
+/** Read whether the EME shim is injected into the page. */
+export function getAudioEmeShim(): boolean {
+  return getConfigValue('audio.emeShim', true);
+}
+
+/** Persist the EME shim toggle. */
+export function setAudioEmeShim(enabled: boolean): void {
+  setConfigValue('audio.emeShim', enabled);
+}
+
+/** Read the wrapper decrypt-socket address, when that transport is used. */
+export function getAudioDecryptorService(): string {
+  return envString('LIDRA_DECRYPTOR') ?? getConfigValue('audio.decryptorService', '');
+}
+
+/** Persist the wrapper decrypt-socket address. */
+export function setAudioDecryptorService(address: string): void {
+  setConfigValue('audio.decryptorService', address);
+}
+
+/** Read the wrapper manifest-socket address, for manifests the API omits. */
+export function getAudioManifestService(): string {
+  return envString('LIDRA_MANIFEST_SERVICE') ?? getConfigValue('audio.manifestService', '');
+}
+
+/** Persist the wrapper manifest-socket address. */
+export function setAudioManifestService(address: string): void {
+  setConfigValue('audio.manifestService', address);
 }

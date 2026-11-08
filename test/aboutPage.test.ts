@@ -11,7 +11,7 @@ describe('About page display name', () => {
   it.each([
     ['?name=Test+Player', 'Test Player'],
     ['?name=%3Cb%3ETest%3C%2Fb%3E', '<b>Test</b>'],
-    ['', 'Sidra'],
+    ['', 'Lidra'],
   ])('uses the resolved name for text and image alt with query %s', (search, name) => {
     const elements = new Map([...html.matchAll(/id="([^"]+)"/g)].map(match => [
       match[1], { textContent: '', alt: '', addEventListener: vi.fn() },

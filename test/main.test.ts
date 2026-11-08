@@ -103,11 +103,11 @@ const bootstrap = vi.hoisted(() => {
 
 vi.mock("electron", () => ({
   app: {
-    name: "Sidra",
+    name: "Lidra",
     isPackaged: false,
     getName: vi.fn(() => "Test Player"),
     getVersion: vi.fn(() => "0.3.0"),
-    getPath: vi.fn((name: string) => `/tmp/sidra-test/${name}`),
+    getPath: vi.fn((name: string) => `/tmp/lidra-test/${name}`),
     whenReady: vi.fn(() => Promise.resolve()),
     on: bootstrap.appOn,
     quit: bootstrap.appQuit,
@@ -123,7 +123,12 @@ vi.mock("electron", () => ({
     whenReady: vi.fn(() => Promise.resolve()),
     status: vi.fn(() => ({})),
   },
-  ipcMain: { on: bootstrap.ipcOn },
+  dialog: {
+    showErrorBox: vi.fn(),
+    showMessageBox: vi.fn(() => Promise.resolve({ response: 0 })),
+    showOpenDialog: vi.fn(() => Promise.resolve({ canceled: true, filePaths: [] })),
+  },
+  ipcMain: { on: bootstrap.ipcOn, handle: vi.fn(), removeListener: vi.fn() },
   Menu: {
     buildFromTemplate: vi.fn(),
     setApplicationMenu: vi.fn(),
@@ -155,7 +160,8 @@ vi.mock("fs", () => ({
   default: { readFileSync: vi.fn(() => "asset") },
 }));
 
-vi.mock("../src/config", () => ({
+vi.mock("../src/config", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/config")>()),
   getZoomFactor: vi.fn(() => 1),
   getCloseToTrayEnabled: vi.fn(() => false),
   getMusicService: vi.fn(() => "music"),
@@ -164,7 +170,7 @@ vi.mock("../src/config", () => ({
 vi.mock("../src/i18n", () => ({
   getLoadingText: vi.fn(() => ({ text: "Loading...", lang: "en" })),
   getNavigationStrings: vi.fn(() => ({})),
-  getTrayStrings: vi.fn(() => ({ about: "À propos de Sidra" })),
+  getTrayStrings: vi.fn(() => ({ about: "À propos de Lidra" })),
   NAV_LABELS_TOKEN: "__NAV_LABELS__",
 }));
 
@@ -331,10 +337,10 @@ describe("main bootstrap", () => {
 
   it("sets the exported Flatpak desktop name on Linux", async () => {
     setPlatform("linux");
-    vi.stubEnv("FLATPAK_ID", "world.wimpys.sidra");
+    vi.stubEnv("FLATPAK_ID", "io.github.evangit2.lidra");
     await startMain();
     const { app } = await import("electron");
-    expect(app.setDesktopName).toHaveBeenCalledWith("world.wimpys.sidra.desktop");
+    expect(app.setDesktopName).toHaveBeenCalledWith("io.github.evangit2.lidra.desktop");
   });
 
   it("forwards the About label from getTrayStrings to the macOS menu", async () => {
@@ -344,7 +350,7 @@ describe("main bootstrap", () => {
     expect(Menu.buildFromTemplate).toHaveBeenCalledWith([
       expect.objectContaining({
         submenu: expect.arrayContaining([
-          expect.objectContaining({ label: "À propos de Sidra" }),
+          expect.objectContaining({ label: "À propos de Lidra" }),
         ]),
       }),
     ]);
@@ -369,7 +375,7 @@ describe("main bootstrap", () => {
         title: "Test Player",
         show: false,
         webPreferences: expect.objectContaining({
-          partition: "persist:sidra",
+          partition: "persist:lidra",
           nodeIntegration: false,
           contextIsolation: true,
           spellcheck: false,
@@ -517,7 +523,7 @@ describe("main bootstrap", () => {
     expect(bootstrap.webContents.executeJavaScript).not.toHaveBeenCalled();
 
     await finish?.();
-    expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(3);
+    expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(4);
     for (const initialise of Object.values(bootstrap.integrations)) {
       expect(initialise.mock.invocationCallOrder[0]).toBeLessThan(
         bootstrap.webContents.executeJavaScript.mock.invocationCallOrder[0],
@@ -525,7 +531,7 @@ describe("main bootstrap", () => {
     }
 
     await navigate?.({}, "https://music.apple.com/gb/new");
-    expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(6);
+    expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(8);
     for (const initialise of Object.values(bootstrap.integrations))
       expect(initialise).toHaveBeenCalledOnce();
   });
@@ -552,6 +558,7 @@ describe("main bootstrap", () => {
     const finish = bootstrap.mainWebListeners.get("did-finish-load");
     bootstrap.webContents.executeJavaScript
       .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(true)
       .mockRejectedValueOnce(new Error("queue script failed"));
 
     await finish?.();
@@ -560,16 +567,16 @@ describe("main bootstrap", () => {
       "failed to inject fastQueueScript on load:",
       expect.any(Error),
     );
-    expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(3);
+    expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(4);
   });
 
   it("permits later SPA injection after initial integration and hook failures", async () => {
     bootstrap.integrations.notifications.mockImplementationOnce(() => {
       throw new Error("integration unavailable");
     });
-    bootstrap.webContents.executeJavaScript.mockRejectedValueOnce(
-      new Error("hook unavailable"),
-    );
+    bootstrap.webContents.executeJavaScript
+      .mockResolvedValueOnce(true)
+      .mockRejectedValueOnce(new Error("hook unavailable"));
     await startMain();
     const navigate = bootstrap.mainWebListeners.get("did-navigate-in-page");
     await navigate?.({}, "https://music.apple.com/gb/home");
@@ -586,9 +593,9 @@ describe("main bootstrap", () => {
       expect.any(Error),
     );
     expect(bootstrap.integrations.trayState).toHaveBeenCalledOnce();
-    expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(2);
+    expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(3);
     await navigate?.({}, "https://music.apple.com/gb/new");
-    expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(5);
+    expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(7);
     expect(bootstrap.integrations.notifications).toHaveBeenCalledOnce();
   });
 
@@ -612,29 +619,12 @@ describe("main bootstrap", () => {
   });
 
   it("waits for Settings and its dependencies before creating the tray", async () => {
-    const { components } = await import("electron");
     const { initSettingsActions } = await import("../src/settings");
     const { initSettingsWindow } = await import("../src/settingsWindow");
     const { createTray, rebuildTrayMenu, setGetMainWindowCallback } =
       await import("../src/tray");
     const { initServiceSwitch } = await import("../src/serviceSwitch");
-    let resolveComponents!: () => void;
-    vi.mocked(components.whenReady).mockReturnValueOnce(
-      new Promise((resolve) => {
-        resolveComponents = () => resolve([]);
-      }),
-    );
-
     await startMain();
-    try {
-      expect(components.whenReady).toHaveBeenCalledOnce();
-      expect(createTray).not.toHaveBeenCalled();
-      expect(initSettingsActions).not.toHaveBeenCalled();
-      expect(bootstrap.mainWindow.loadURL).not.toHaveBeenCalled();
-    } finally {
-      resolveComponents();
-      await startMain();
-    }
 
     expect(createTray).toHaveBeenCalledOnce();
     const trayCreated = vi.mocked(createTray).mock.invocationCallOrder[0];
@@ -756,7 +746,7 @@ describe("main bootstrap", () => {
 
   it("logs process lifecycle events without private event data", async () => {
     const privatePath =
-      "/home/alice/.config/sidra/access-token-secret/preload.js";
+      "/home/alice/.config/lidra/access-token-secret/preload.js";
     const privateUrl =
       "https://music.apple.com/gb/album/private?token=secret-token";
     const privateStack = `Error: secret-token\n    at ${privatePath}:1:1`;

@@ -435,20 +435,20 @@ describe("Config store runtime behaviour", () => {
 
   it("Last.fm session key and username readers each read their own key", () => {
     store.set("lastfm.sessionKey", "sk-0123456789abcdef");
-    store.set("lastfm.username", "wimpysworld");
+    store.set("lastfm.username", "evangit2");
     expect(getLastfmSessionKey()).toBe("sk-0123456789abcdef");
-    expect(getLastfmUsername()).toBe("wimpysworld");
+    expect(getLastfmUsername()).toBe("evangit2");
   });
 
   it("setLastfmSession writes each argument to its own key", () => {
     // Clearly different values, so swapping the two arguments fails here.
-    setLastfmSession("sk-0123456789abcdef", "wimpysworld");
+    setLastfmSession("sk-0123456789abcdef", "evangit2");
     expect(getLastfmSessionKey()).toBe("sk-0123456789abcdef");
-    expect(getLastfmUsername()).toBe("wimpysworld");
+    expect(getLastfmUsername()).toBe("evangit2");
   });
 
   it("clearLastfmSession sets both keys to null rather than removing them", () => {
-    setLastfmSession("sk-0123456789abcdef", "wimpysworld");
+    setLastfmSession("sk-0123456789abcdef", "evangit2");
     clearLastfmSession();
     // Null, not undefined: the readers use the has-check variant, so a cleared
     // key and an absent key are different states. Asserting falsiness alone

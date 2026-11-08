@@ -180,7 +180,7 @@ const SEND_CHANNELS = channelSet<SendChannel>({
 });
 
 // Channels the main process is allowed to send to the renderer.
-// Each channel maps to a window.__sidra method dispatched via ipcRenderer.on().
+// Each channel maps to a window.__lidra method dispatched via ipcRenderer.on().
 // The command allowlist in assets/musicKitHook.js must stay in sync.
 const RECEIVE_CHANNELS = channelSet<ReceiveChannel>({
   "player:goTo": true,
@@ -304,18 +304,18 @@ document.addEventListener("visibilitychange", handleVisibilityChange);
 startControllerPolling();
 
 // The preload runs in the isolated world (contextIsolation: true), so it cannot
-// call window.__sidra directly. That object lives in the main world, set up by
+// call window.__lidra directly. That object lives in the main world, set up by
 // musicKitHook.js. window.postMessage() crosses the isolation boundary, and the
-// hook dispatches each sidra:command message to the matching __sidra method.
+// hook dispatches each lidra:command message to the matching __lidra method.
 // The target origin is window.location.origin, so the bridge works on either
 // service host without naming one.
 for (const channel of RECEIVE_CHANNELS.all) {
   ipcRenderer.on(channel, (_event, ...args: unknown[]) => {
     const message = {
-      type: "sidra:command",
+      type: "lidra:command",
       channel,
       args,
-    } satisfies SidraCommandMessage;
+    } satisfies LidraCommandMessage;
     window.postMessage(message, window.location.origin);
   });
 }

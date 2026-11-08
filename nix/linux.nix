@@ -48,25 +48,24 @@
 }:
 
 let
-  pname = "sidra";
+  pname = "lidra";
 
   # The nix-hash CI job updates each URL and hash as one pair from each release.
   # Do not edit these values by hand, because each pair must stay in sync.
   sources = {
     x86_64-linux = {
-      url = "https://github.com/wimpysworld/sidra/releases/download/${version}/Sidra-${version}-linux-amd64.deb";
+      url = "https://github.com/evangit2/lidra/releases/download/${version}/Lidra-${version}-linux-amd64.deb";
       hash = "sha256-nANUulzCujNhig4MFWGvTXv5U3dw6mXPYuK7OQWpiV4=";
     };
     aarch64-linux = {
-      url = "https://github.com/wimpysworld/sidra/releases/download/${version}/Sidra-${version}-linux-arm64.deb";
+      url = "https://github.com/evangit2/lidra/releases/download/${version}/Lidra-${version}-linux-arm64.deb";
       hash = "sha256-2OTAyvdYrsk2jx8m+LGiMif783vjrHCgKk153t4CLLw=";
     };
   };
 
   src = fetchurl sources.${stdenv.hostPlatform.system};
 
-  # Unpack the deb without patching it. The CastLabs Electron binary is
-  # VMP-signed for Widevine DRM, so a modification invalidates the signature.
+  # Unpack the deb without patching it.
   unpacked = stdenvNoCC.mkDerivation {
     pname = "${pname}-unpacked";
     inherit version src;
@@ -91,12 +90,12 @@ let
       runHook preInstall
 
       mkdir -p $out
-      cp -a opt/Sidra $out/opt
+      cp -a opt/Lidra $out/opt
       cp -a usr/share $out/share
 
       # Fix the desktop file to point at the wrapper (will be set by FHS env)
-      substituteInPlace $out/share/applications/sidra.desktop \
-        --replace-fail /opt/Sidra/sidra sidra
+      substituteInPlace $out/share/applications/lidra.desktop \
+        --replace-fail /opt/Lidra/lidra lidra
 
       runHook postInstall
     '';
@@ -146,7 +145,7 @@ let
     inherit pname version;
     targetPkgs = _: libs;
 
-    runScript = "${unpacked}/opt/sidra";
+    runScript = "${unpacked}/opt/lidra";
 
     extraInstallCommands = ''
       # Desktop file and icons from the deb
@@ -155,13 +154,13 @@ let
       cp -a ${unpacked}/share/icons $out/share/
 
       # Point desktop file Exec at the FHS wrapper
-      substituteInPlace $out/share/applications/sidra.desktop \
-        --replace-fail "Exec=sidra" "Exec=$out/bin/sidra"
+      substituteInPlace $out/share/applications/lidra.desktop \
+        --replace-fail "Exec=lidra" "Exec=$out/bin/lidra"
     '';
 
     meta = {
       description = "An elegant Apple Music desktop client";
-      homepage = "https://github.com/wimpysworld/sidra";
+      homepage = "https://github.com/evangit2/lidra";
       license = lib.licenses.blueOak100;
       maintainers = with lib.maintainers; [ flexiondotorg ];
       platforms = [
@@ -169,7 +168,7 @@ let
         "aarch64-linux"
       ];
       sourceProvenance = with lib.sourceTypes; [ binaryNativeCode ];
-      mainProgram = "sidra";
+      mainProgram = "lidra";
     };
   };
 in

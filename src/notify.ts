@@ -5,7 +5,7 @@ import { errorMessage } from "./utils";
 
 const notifyLog = log.scope("notify");
 
-// The only place in Sidra a Notification is constructed, because on Linux
+// The only place in Lidra a Notification is constructed, because on Linux
 // Notification.show() blocks the browser UI thread when nothing owns
 // org.freedesktop.Notifications. Electron calls notify_notification_show()
 // inline, libnotify builds its GDBusProxy without DO_NOT_AUTO_START, so GLib

@@ -1,19 +1,19 @@
-// CastLabs ECS provides these runtime APIs but omits their declarations.
+// Electron provides these runtime APIs but omits their declarations.
 // Central augmentation keeps callers type-checked without local casts.
 
-/** Runtime APIs missing from the bundled CastLabs Electron declarations. */
+/** Runtime APIs missing from the bundled Electron declarations. */
 declare namespace Electron {
- /** Electron application APIs missing from the bundled CastLabs declarations. */
+ /** Electron application APIs missing from the bundled declarations. */
  interface App {
   /**
-   * Sets the XDG desktop filename on Linux. CastLabs maps the name to
-   * `CHROME_DESKTOP`, which gives Sidra's PulseAudio stream its own name and icon.
+   * Sets the XDG desktop filename on Linux. Electron maps the name to
+   * `CHROME_DESKTOP`, which gives Lidra's PulseAudio stream its own name and icon.
    */
   setDesktopName(name: string): void;
 
   /**
-   * Accepts `cache`, which the runtime supports but the CastLabs union omits.
-   * Sidra uses this path for the artwork cache.
+   * Accepts `cache`, which the runtime supports but the union omits.
+   * Lidra uses this path for the artwork cache.
    */
   getPath(name: "cache"): string;
  }

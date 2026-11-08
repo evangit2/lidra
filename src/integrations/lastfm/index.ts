@@ -63,18 +63,18 @@ export function isCustomEndpoint(): boolean {
 }
 
 function requestSessionKey(): string | null | undefined {
-  return customEndpoint ? "sidra" : getLastfmSessionKey();
+  return customEndpoint ? "lidra" : getLastfmSessionKey();
 }
 
 /**
- * Reads application credentials from SIDRA_LASTFM_API_KEY/SIDRA_LASTFM_API_SECRET,
+ * Reads application credentials from LIDRA_LASTFM_API_KEY/LIDRA_LASTFM_API_SECRET,
  * then assets/lastfm-credentials.json, which scripts/inject-lastfm-credentials.cjs generates at build time.
- * These identify Sidra, not the user, and stay outside the public source tree.
+ * These identify Lidra, not the user, and stay outside the public source tree.
  * Missing credentials disable official Last.fm through isConfigured().
  */
 function loadCredentials(): { apiKey: string; apiSecret: string } {
-  const envKey = process.env.SIDRA_LASTFM_API_KEY;
-  const envSecret = process.env.SIDRA_LASTFM_API_SECRET;
+  const envKey = process.env.LIDRA_LASTFM_API_KEY;
+  const envSecret = process.env.LIDRA_LASTFM_API_SECRET;
   if (envKey && envSecret) return { apiKey: envKey, apiSecret: envSecret };
   try {
     const parsed = JSON.parse(
@@ -90,7 +90,7 @@ function loadCredentials(): { apiKey: string; apiSecret: string } {
 }
 
 const { apiKey: API_KEY, apiSecret: API_SECRET } = customEndpoint
-  ? { apiKey: "sidra", apiSecret: "sidra" }
+  ? { apiKey: "lidra", apiSecret: "lidra" }
   : loadCredentials();
 
 // Last.fm scrobbling rules: a track must be longer than 30 seconds and must have
@@ -1077,7 +1077,7 @@ export function disconnect(): void {
   sessionGeneration += 1;
   invalidateRadioContinuity();
   // The queued plays go with the account. They are the user's listening history
-  // held in plain text, and Disconnect removes Sidra's copy. A queue that
+  // held in plain text, and Disconnect removes Lidra's copy. A queue that
   // outlived the account would submit those plays to the next connected account.
   setPendingScrobbles([]);
   setLastfmEnabled(false);
@@ -1104,7 +1104,7 @@ export function init(ctx: IntegrationContext): void {
   if (!isConfigured()) {
     lastfmLog.info(
       customEndpoint
-        ? "invalid lastfm.apiUrl; scrobbling disabled until configuration is fixed and Sidra restarts"
+        ? "invalid lastfm.apiUrl; scrobbling disabled until configuration is fixed and Lidra restarts"
         : "no API credentials configured; scrobbling is inert until set",
     );
   }

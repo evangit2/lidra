@@ -9,10 +9,10 @@ import tempfile
 from pathlib import Path
 
 root = Path(__file__).resolve().parent.parent
-output = root / "assets/sidra-screenshot.png"
+output = root / "assets/lidra-screenshot.png"
 screenshots = (
-  ("sidra-screenshot-02@2x.png", 80, 56, 2560, 1440),
-  ("sidra-settings.png", 1130, 400, 754, 824),
+  ("lidra-screenshot-02@2x.png", 80, 56, 2560, 1440),
+  ("lidra-settings.png", 1130, 400, 754, 824),
 )
 
 for tool in ("rsvg-convert", "optipng"):

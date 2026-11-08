@@ -149,7 +149,7 @@ function createHarness(bodyChildren: StubElement[] = []) {
     querySelectorAll: (selector: string): StubElement[] =>
       all().filter((element) => element.matches(selector)),
   };
-  const window: { __sidraAuthFixInstalled?: boolean } = {};
+  const window: { __lidraAuthFixInstalled?: boolean } = {};
   const context = vm.createContext({
     console: { info },
     document,
@@ -188,7 +188,7 @@ describe('authFrameFix', () => {
     run();
 
     const [style] = styles();
-    expect(style?.id).toBe('sidra-auth-fix');
+    expect(style?.id).toBe('lidra-auth-fix');
     expect(style?.textContent).toBe(CONFIG.css);
   });
 

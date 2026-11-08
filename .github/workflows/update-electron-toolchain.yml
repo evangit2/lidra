@@ -71,11 +71,11 @@ jobs:
           if [ -n "$pr_number" ]; then
             gh pr edit "$pr_number" \
               --title "build(deps): update Electron toolchain" \
-              --body "Update CastLabs Electron, electron-builder, and electron-updater to current stable releases."
+              --body "Update Electron, electron-builder, and electron-updater to current stable releases."
           else
             gh pr create \
               --base main \
               --head "$BRANCH" \
               --title "build(deps): update Electron toolchain" \
-              --body "Update CastLabs Electron, electron-builder, and electron-updater to current stable releases."
+              --body "Update Electron, electron-builder, and electron-updater to current stable releases."
           fi

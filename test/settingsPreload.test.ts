@@ -11,7 +11,7 @@ beforeEach(() => {
 it('exposes only the typed Settings API and hides Electron events', async () => {
   await import('../src/settingsPreload');
   const [name, bridge] = vi.mocked(contextBridge.exposeInMainWorld).mock.calls[0] as [string, SettingsBridge];
-  expect(name).toBe('sidraSettings');
+  expect(name).toBe('lidraSettings');
   expect(Object.keys(bridge)).toEqual(['getState', 'apply', 'onState']);
   bridge.getState();
   bridge.apply({ type: 'notifications', value: false });

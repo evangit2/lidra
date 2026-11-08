@@ -294,7 +294,7 @@ export function createLinuxNotifications(
         notificationId,
         process.env.FLATPAK_ID
           ? getDesktopId()
-          : getAssetPath("assets", "sidra-logo.png"),
+          : getAssetPath("assets", "lidra-logo.png"),
         notification.title,
         Array.isArray(capabilities?.body[0]) &&
         capabilities.body[0].includes("body-markup")

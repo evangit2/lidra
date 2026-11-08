@@ -36,7 +36,7 @@ const ACTION_LABELS = {
 // The artwork download is the expensive half of a notification: a network fetch
 // and a disk write per track. The gate must sit in front of it.
 vi.mock("../src/artwork", () => ({
-  downloadArtwork: vi.fn(() => Promise.resolve("/tmp/sidra-test/artwork.jpg")),
+  downloadArtwork: vi.fn(() => Promise.resolve("/tmp/lidra-test/artwork.jpg")),
 }));
 
 const TRACK: NowPlayingPayload = {
@@ -413,7 +413,7 @@ describe("notifications integration", () => {
       expect(shown()?.options).toMatchObject({
         title: "Radio Song",
         body: "Radio Artist",
-        icon: "/tmp/sidra-test/artwork.jpg",
+        icon: "/tmp/lidra-test/artwork.jpg",
       });
       expect(downloadArtwork).toHaveBeenCalledExactlyOnceWith(
         STATION.artworkUrl,
@@ -506,7 +506,7 @@ describe("notifications integration", () => {
     expect(notification).toMatchObject({
       title: "Radio Song",
       body: "Radio Artist",
-      icon: "/tmp/sidra-test/artwork.jpg",
+      icon: "/tmp/lidra-test/artwork.jpg",
     });
     notification.onAction("previous");
     notification.onAction("next");
@@ -585,7 +585,7 @@ describe("notifications integration", () => {
     player.emitPlaybackState(PlaybackState.Paused);
     const paused = notifyFake.built[1];
     expect(paused.options.actions?.[0].text).toBe(getTrayStrings().play);
-    expect(paused.options.icon).toBe("/tmp/sidra-test/artwork.jpg");
+    expect(paused.options.icon).toBe("/tmp/lidra-test/artwork.jpg");
     paused.handlers.show();
     player.emitPlaybackState(PlaybackState.Paused);
     expect(notifyFake.built).toHaveLength(2);

@@ -3,7 +3,7 @@ const fs = require("node:fs");
 // Backport https://github.com/electron-userland/electron-builder/pull/10176.
 // Snapcraft copies snap/gui itself. The extra mapping points at a missing file.
 const mapping = '            desktop: `meta/gui/${desktopBaseName}.desktop`,\n';
-const replacement = "            // Sidra: use the generated snap/gui desktop entry.\n";
+const replacement = "            // Lidra: use the generated snap/gui desktop entry.\n";
 
 function assertSnapDesktopVersion(version) {
   if (version !== "26.18.1") {

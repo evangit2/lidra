@@ -291,10 +291,10 @@ describe("discord presence integration", () => {
       details: "Blue Monday",
       state: "by New Order",
       buttons: [
-        { label: "Test Player", url: "https://github.com/wimpysworld/sidra" },
+        { label: "Test Player", url: "https://github.com/evangit2/lidra" },
         { label: "Play on Apple Music", url: TRACK.url },
       ],
-      smallImageKey: "sidra_logo",
+      smallImageKey: "lidra_logo",
       smallImageText: "Test Player",
       // sendActivity() anchors both stamps to Date.now() at fire time, and the
       // fake clock has moved by the debounce. The playhead sits at zero, so
@@ -345,7 +345,7 @@ describe("discord presence integration", () => {
     expect(activity().buttons).toEqual([
       {
         label: expect.any(String),
-        url: "https://github.com/wimpysworld/sidra",
+        url: "https://github.com/evangit2/lidra",
       },
     ]);
   });

@@ -25,13 +25,13 @@ describe('update display name', () => {
     resetNotifyFake('record');
     vi.mocked(net.fetch).mockResolvedValue(new Response(JSON.stringify({
       tag_name: 'v1.2.3',
-      html_url: 'https://github.com/wimpysworld/sidra/releases/tag/1.2.3',
+      html_url: 'https://github.com/evangit2/lidra/releases/tag/1.2.3',
     })));
 
     await checkForUpdates(new Tray('icon'), vi.fn());
 
     expect(net.fetch).toHaveBeenCalledWith(
-      'https://api.github.com/repos/wimpysworld/sidra/releases/latest',
+      'https://api.github.com/repos/evangit2/lidra/releases/latest',
       expect.objectContaining({ headers: {
         'User-Agent': 'Test Player/0.3.0',
         'Accept': 'application/vnd.github.v3+json',
@@ -104,7 +104,7 @@ describe('isNewer', () => {
   });
 
   it('returns false when a non-numeric part follows a deciding part', () => {
-    // The minor part alone says 0.4.x is newer, but a tag Sidra cannot parse
+    // The minor part alone says 0.4.x is newer, but a tag Lidra cannot parse
     // must not drive an update prompt, so the whole version is refused.
     expect(isNewer('0.4.x', '0.3.0')).toBe(false);
   });
@@ -146,7 +146,7 @@ describe('isNewer', () => {
   });
 
   it('returns false for a signed part', () => {
-    // Deliberate: no Sidra release tag carries a sign, so a part spelling a
+    // Deliberate: no Lidra release tag carries a sign, so a part spelling a
     // number Number() would accept is refused along with the rest.
     expect(isNewer('+2.0.0', '1.0.0')).toBe(false);
     expect(isNewer('2.0.0', '-1.0.0')).toBe(false);

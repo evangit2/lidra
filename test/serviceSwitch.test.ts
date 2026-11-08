@@ -41,7 +41,7 @@ import { notifyDocumentReplacing } from '../src/theme';
 import { buildAppleMusicURL } from '../src/storefront';
 
 describe('serviceSwitch', () => {
-  const tray = new Tray('/tmp/sidra-test/icon.png');
+  const tray = new Tray('/tmp/lidra-test/icon.png');
   const loadURL = vi.fn((_url: string) => { calls.push('loadURL'); });
 
   beforeEach(() => {
@@ -101,7 +101,7 @@ describe('serviceSwitch', () => {
 
 // main.ts passes validated itms:// URLs here. Test the service branch without running application startup.
 describe('routeToMusicService', () => {
-  const tray = new Tray('/tmp/sidra-test/icon.png');
+  const tray = new Tray('/tmp/lidra-test/icon.png');
   const loadURL = vi.fn((_url: string) => { calls.push('loadURL'); });
   const deepLink = 'https://music.apple.com/gb/album/1234';
 

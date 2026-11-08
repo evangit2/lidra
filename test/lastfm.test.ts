@@ -150,8 +150,8 @@ async function loadLastfm(): Promise<
   typeof import("../src/integrations/lastfm")
 > {
   vi.resetModules();
-  vi.stubEnv("SIDRA_LASTFM_API_KEY", "test-key");
-  vi.stubEnv("SIDRA_LASTFM_API_SECRET", "test-secret");
+  vi.stubEnv("LIDRA_LASTFM_API_KEY", "test-key");
+  vi.stubEnv("LIDRA_LASTFM_API_SECRET", "test-secret");
   return import("../src/integrations/lastfm");
 }
 
@@ -226,7 +226,7 @@ function restoreRealTime(): void {
 }
 
 describe("custom scrobble endpoint", () => {
-  const endpoint = "http://127.0.0.1:9078/api/lastfm/sidra";
+  const endpoint = "http://127.0.0.1:9078/api/lastfm/lidra";
   const pending: PendingScrobble = { artist: "Queued artist", track: "Queued track", timestamp: 1 };
   const identity = (url: string): string => createHash("sha256").update(url).digest("hex");
 
@@ -251,12 +251,12 @@ describe("custom scrobble endpoint", () => {
       expect(init?.redirect).toBe("error");
       expect(init?.headers).toMatchObject({ Accept: "application/json" });
       const params = new URLSearchParams(String(init?.body));
-      expect(params.get("api_key")).toBe("sidra");
-      expect(params.get("sk")).toBe("sidra");
+      expect(params.get("api_key")).toBe("lidra");
+      expect(params.get("sk")).toBe("lidra");
       const signature = params.get("api_sig");
       params.delete("api_sig");
       params.delete("format");
-      expect(signature).toBe(signParams(Object.fromEntries(params), "sidra"));
+      expect(signature).toBe(signParams(Object.fromEntries(params), "lidra"));
       expect(String(init?.body)).not.toMatch(/test-key|test-secret|session-key|username|token/);
     }
     expect(session.key).toBe("session-key");
@@ -264,8 +264,8 @@ describe("custom scrobble endpoint", () => {
 
   it("works without application credentials or a Last.fm session", async () => {
     vi.resetModules();
-    vi.stubEnv("SIDRA_LASTFM_API_KEY", "");
-    vi.stubEnv("SIDRA_LASTFM_API_SECRET", "");
+    vi.stubEnv("LIDRA_LASTFM_API_KEY", "");
+    vi.stubEnv("LIDRA_LASTFM_API_SECRET", "");
     session.key = null;
     const lastfm = await import("../src/integrations/lastfm");
     const player = new FakePlayer();
@@ -379,7 +379,7 @@ describe("custom scrobble endpoint", () => {
     expect(scrobbles()).toHaveLength(1);
     expect(scrobbles()[0].get("track")).toBe("Radio Song B");
     expect(scrobbles()[0].get("chosenByUser")).toBe("0");
-    expect(scrobbles()[0].get("sk")).toBe("sidra");
+    expect(scrobbles()[0].get("sk")).toBe("lidra");
   });
 
   it.each([404, 409, 503])("retains a failed play after HTTP %s without a retry timer", async (status) => {
@@ -436,7 +436,7 @@ describe("custom scrobble endpoint", () => {
     try {
       const address = server.address();
       if (!address || typeof address === "string") throw new Error("missing local port");
-      session.apiUrl = `http://127.0.0.1:${address.port}/api/lastfm/sidra`;
+      session.apiUrl = `http://127.0.0.1:${address.port}/api/lastfm/lidra`;
       session.destination = identity(session.apiUrl as string);
       queue.pending = [pending, { ...pending, track: "Second queued track" }];
       const requests: Promise<Response>[] = [];
@@ -453,10 +453,10 @@ describe("custom scrobble endpoint", () => {
       expect(received.map((request) => request.params.get("method"))).toEqual(["track.updateNowPlaying", "track.scrobble"]);
       expect(received[1].params.get("track[1]")).toBe("Second queued track");
       for (const request of received) {
-        expect(request.path).toBe("/api/lastfm/sidra");
+        expect(request.path).toBe("/api/lastfm/lidra");
         expect(request.accept).toBe("application/json");
-        expect(request.params.get("sk")).toBe("sidra");
-        expect(request.params.get("api_key")).toBe("sidra");
+        expect(request.params.get("sk")).toBe("lidra");
+        expect(request.params.get("api_key")).toBe("lidra");
       }
     } finally {
       quit();
@@ -1189,7 +1189,7 @@ describe("revoked session", () => {
 
     // The user reconnects the same account and Last.fm returns the key it
     // issued before: a session key belongs to the account, not to the
-    // authorisation, so re-approving Sidra hands the same one back.
+    // authorisation, so re-approving Lidra hands the same one back.
     respondToAuth(
       () =>
         new Response(
@@ -1534,7 +1534,7 @@ describe("queued scrobbles", () => {
     ];
 
     const { player } = await startIntegration();
-    // 10: invalid API key. That is Sidra's own credential, not a judgement on
+    // 10: invalid API key. That is Lidra's own credential, not a judgement on
     // these plays, and Last.fm can restore it server-side.
     refuseScrobbles(10);
 
@@ -1906,7 +1906,7 @@ describe("queued scrobbles", () => {
     expect(session.key).toBe("new-key");
 
     // The network finally gives up on the request the old account made. That
-    // play belongs to an account Sidra no longer holds, so it cannot go on a
+    // play belongs to an account Lidra no longer holds, so it cannot go on a
     // queue the next request submits under someone else's key.
     held[0](new Error("net::ERR_INTERNET_DISCONNECTED"));
     await flush();
@@ -1922,7 +1922,7 @@ describe("queued scrobbles", () => {
     await flush();
     expect(queue.pending).toHaveLength(1);
 
-    // Disconnect removes Sidra's copy of the account. The queued plays are the
+    // Disconnect removes Lidra's copy of the account. The queued plays are the
     // user's listening history in plain text and they belong to the account
     // that has just gone, so they go with it.
     lastfm.disconnect();
@@ -1994,7 +1994,7 @@ describe("queued scrobbles", () => {
     const { player } = await startIntegration();
 
     // The batch request answers nothing at all and settles only when the signal
-    // Sidra passes aborts it, which is what a connection that hangs rather than
+    // Lidra passes aborts it, which is what a connection that hangs rather than
     // failing looks like.
     vi.mocked(net.fetch).mockImplementation((_input, init) => {
       const params = new URLSearchParams(

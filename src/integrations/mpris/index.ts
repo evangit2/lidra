@@ -86,7 +86,7 @@ function logCommand(
 }
 
 /**
- * The `org.mpris.MediaPlayer2` root interface: how Sidra identifies itself to
+ * The `org.mpris.MediaPlayer2` root interface: how Lidra identifies itself to
  * media clients, and the window controls the spec puts here.
  */
 class MediaPlayer2 extends Interface {
@@ -108,12 +108,12 @@ class MediaPlayer2 extends Interface {
     return getDesktopId();
   }
 
-  /** Reports that clients can quit Sidra. */
+  /** Reports that clients can quit Lidra. */
   get CanQuit(): boolean {
     return true;
   }
 
-  /** Reports that clients can bring Sidra to the foreground. */
+  /** Reports that clients can bring Lidra to the foreground. */
   get CanRaise(): boolean {
     return true;
   }

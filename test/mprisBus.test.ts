@@ -9,9 +9,9 @@ import { quit } from "./mocks/appLifecycle";
 
 vi.mock("../src/artwork", () => ({ downloadArtwork: vi.fn(async () => null) }));
 
-// Run only on a disposable session bus, never against the user's Sidra service:
-// dbus-run-session -- env SIDRA_TEST_MPRIS_BUS=1 npm test -- test/mprisBus.test.ts
-describe.runIf(process.env.SIDRA_TEST_MPRIS_BUS === "1")("MPRIS on a real private D-Bus", () => {
+// Run only on a disposable session bus, never against the user's Lidra service:
+// dbus-run-session -- env LIDRA_TEST_MPRIS_BUS=1 npm test -- test/mprisBus.test.ts
+describe.runIf(process.env.LIDRA_TEST_MPRIS_BUS === "1")("MPRIS on a real private D-Bus", () => {
   it("marshals TrackList properties, methods, edit errors and ordered signals", async () => {
     const player = new Player();
     const first = { occurrenceId: "d1_i1_o1", trackId: "duplicate", name: "First", durationInMillis: 123_000 };
@@ -29,12 +29,12 @@ describe.runIf(process.env.SIDRA_TEST_MPRIS_BUS === "1")("MPRIS on a real privat
         .getInterface("org.freedesktop.DBus");
       let ready = false;
       for (let attempt = 0; attempt < 50; attempt++) {
-        ready = await daemon.NameHasOwner("org.mpris.MediaPlayer2.sidra") as boolean;
+        ready = await daemon.NameHasOwner("org.mpris.MediaPlayer2.lidra") as boolean;
         if (ready) break;
         await new Promise(resolve => setTimeout(resolve, 10));
       }
       expect(ready).toBe(true);
-      const object = await client.getProxyObject("org.mpris.MediaPlayer2.sidra", "/org/mpris/MediaPlayer2");
+      const object = await client.getProxyObject("org.mpris.MediaPlayer2.lidra", "/org/mpris/MediaPlayer2");
       const properties = object.getInterface("org.freedesktop.DBus.Properties");
       const list = object.getInterface("org.mpris.MediaPlayer2.TrackList");
       const root = "org.mpris.MediaPlayer2";

@@ -2,7 +2,7 @@
 // without starting Electron through app.whenReady().
 
 /** Placeholder that loadAssets() replaces in assets/authFrameFix.js. */
-export const AUTH_FIX_TOKEN = '__SIDRA_AUTH_FIX__';
+export const AUTH_FIX_TOKEN = '__LIDRA_AUTH_FIX__';
 
 /**
  * Feature-specific containers checked directly and through closest() in the injected script.

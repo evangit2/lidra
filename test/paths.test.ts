@@ -7,9 +7,9 @@ describe('getDesktopId', () => {
   it('uses the exported Flatpak ID without changing the native identity', async () => {
     const { getDesktopId } = await import('../src/paths');
     vi.stubEnv('FLATPAK_ID', undefined);
-    expect(getDesktopId()).toBe('sidra');
-    vi.stubEnv('FLATPAK_ID', 'world.wimpys.sidra');
-    expect(getDesktopId()).toBe('world.wimpys.sidra');
+    expect(getDesktopId()).toBe('lidra');
+    vi.stubEnv('FLATPAK_ID', 'io.github.evangit2.lidra');
+    expect(getDesktopId()).toBe('io.github.evangit2.lidra');
   });
 });
 

@@ -1,20 +1,20 @@
-// Add navigation and Settings buttons to the sidebar because Sidra has no browser toolbar.
+// Add navigation and Settings buttons to the sidebar because Lidra has no browser toolbar.
 (function () {
   // SPA navigation can retain the header, so repeated injection must not duplicate buttons.
-  if (document.getElementById("sidra-nav-buttons")) return;
+  if (document.getElementById("lidra-nav-buttons")) return;
 
   // loadAssets() in src/main.ts replaces NAV_LABELS_TOKEN from src/i18n.ts with JSON.
   // executeJavaScript() cannot supply loadFile() query parameters, so the raw asset requires substitution.
   /** @type {{ back: string, forward: string, reload: string, settings: string }} */
-  var LABELS = __SIDRA_NAV_LABELS__;
+  var LABELS = __LIDRA_NAV_LABELS__;
 
   const logoEl = document.querySelector(".navigation__header .logo");
   if (!logoEl) {
-    console.warn("Sidra: .navigation__header .logo not found");
+    console.warn("Lidra: .navigation__header .logo not found");
     return;
   }
 
-  // logoEl needs flex layout so #sidra-nav-buttons can use margin-left: auto to align right.
+  // logoEl needs flex layout so #lidra-nav-buttons can use margin-left: auto to align right.
   logoEl.setAttribute(
     "style",
     [
@@ -25,7 +25,7 @@
   );
 
   const container = document.createElement("div");
-  container.id = "sidra-nav-buttons";
+  container.id = "lidra-nav-buttons";
   // Apple's sidebar content overlaps the header with a negative top margin.
   container.setAttribute(
     "style",
@@ -193,5 +193,5 @@
 
   logoEl.appendChild(container);
 
-  console.log("[Sidra] Navigation bar injected");
+  console.log("[Lidra] Navigation bar injected");
 })();

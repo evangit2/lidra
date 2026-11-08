@@ -18,7 +18,7 @@ const UPDATE_CHECK_TIMEOUT_MS = 10000;
 const updateLog = log.scope("update");
 
 const GITHUB_API_URL =
-  "https://api.github.com/repos/wimpysworld/sidra/releases/latest";
+  "https://api.github.com/repos/evangit2/lidra/releases/latest";
 
 /** Latest release details shared by both update paths and the tray. */
 export interface UpdateInfo {

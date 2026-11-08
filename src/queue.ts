@@ -22,5 +22,5 @@ export function isOccurrenceId(value: unknown): value is string {
 
 /** Map an opaque occurrence to a stable D-Bus object path. */
 export function occurrenceTrackId(occurrenceId: string): string {
-  return `/org/sidra/tracklist/${occurrenceId}`;
+  return `/org/lidra/tracklist/${occurrenceId}`;
 }

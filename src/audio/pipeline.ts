@@ -1,0 +1,325 @@
+/**
+ * Per-track audio pipeline.
+ *
+ * One pipeline exists per (song, quality) pair. It resolves the enhanced HLS
+ * manifest, downloads the encrypted fMP4 fragments, decrypts them with keys
+ * from the configured key service, and hands the plaintext to ffmpeg, which
+ * writes an HLS event playlist the page can play immediately.
+ *
+ * Fragments are handled as they arrive rather than after the whole file has
+ * downloaded: a hi-res song is over 100 MB, and waiting for all of it is what
+ * makes naive implementations feel slow.
+ */
+import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+import log from "electron-log/main";
+import type { SongAsset } from "./catalog";
+import { fetchStream, fetchText } from "./catalog";
+import {
+  parseMasterPlaylist,
+  parseMediaPlaylist,
+  rankVariants,
+  selectVariant,
+  rangeHeader,
+  type AudioVariant,
+  type MediaPlaylist,
+  type QualityTier,
+} from "./hls";
+import type { KeyCache } from "./keys";
+import { rewriteInit } from "./mp4/init";
+import { decryptSegment } from "./mp4/segment";
+import { createTranscoder, type Transcoder, type AudioTransform } from "./transcode";
+import { LegacyDecryptor, fetchDeviceManifest } from "./legacy/decryptor";
+import { decryptSegmentLegacy } from "./legacy/segment";
+
+const pipelineLog = log.scope("audio.pipeline");
+
+export type PipelineState = "preparing" | "streaming" | "complete" | "error";
+
+export interface PipelineOptions {
+  asset: SongAsset;
+  preference: QualityTier | null;
+  keyCache: KeyCache;
+  cacheRoot: string;
+  ffmpegPath?: string;
+  /** Force a transform instead of deriving it from the codec. */
+  transformOverride?: AudioTransform;
+  /**
+   * `key` decrypts locally with key material from the key service; `wrapper`
+   * sends ciphertext to a wrapper decrypt socket and never sees a key.
+   */
+  decryptMode?: "key" | "wrapper";
+  /** Wrapper decrypt socket address, used when `decryptMode` is `wrapper`. */
+  decryptorService?: string;
+  /** Wrapper manifest socket address; overrides the API's manifest when set. */
+  manifestService?: string;
+}
+
+export interface PipelineSnapshot {
+  id: string;
+  state: PipelineState;
+  asset: SongAsset;
+  variant: AudioVariant | null;
+  error?: string;
+  bytesIn: number;
+  startedAt: number;
+}
+
+export interface PreparedTrack {
+  /** Directory holding playlist.m3u8, init.mp4 and segN.m4s. */
+  directory: string;
+  /** Path fragment the local server mounts this track under. */
+  mount: string;
+  variant: AudioVariant;
+}
+
+/** Chromium cannot decode these, so they are repackaged to FLAC. */
+export function transformFor(codecs: string): AudioTransform {
+  const codec = codecs.toLowerCase();
+  if (codec === "mp4a.40.2" || codec === "mp4a.40.5" || codec === "mp4a") {
+    return "copy";
+  }
+  return "flac";
+}
+
+export function pipelineId(asset: SongAsset, variant: AudioVariant | null): string {
+  const descriptor = variant
+    ? `${variant.tier}-${variant.codecs}-${variant.sampleRate ?? 0}-${variant.bitDepth ?? 0}-${variant.bitrateKbps ?? 0}`
+    : "unresolved";
+  return crypto
+    .createHash("sha1")
+    .update(`${asset.storefront}:${asset.id}:${descriptor}`)
+    .digest("hex")
+    .slice(0, 20);
+}
+
+/** True when a previous run left a complete playlist on disk. */
+function isComplete(directory: string): boolean {
+  try {
+    const playlist = fs.readFileSync(path.join(directory, "playlist.m3u8"), "utf8");
+    return playlist.includes("#EXT-X-ENDLIST");
+  } catch {
+    return false;
+  }
+}
+
+export class TrackPipeline {
+  readonly asset: SongAsset;
+  readonly preference: QualityTier | null;
+  readonly id: string;
+  readonly mount: string;
+  readonly directory: string;
+
+  private state: PipelineState = "preparing";
+  private failure: string | undefined;
+  private variant: AudioVariant | null = null;
+  private bytesIn = 0;
+  private readonly startedAt = Date.now();
+  private transcoder: Transcoder | null = null;
+  private legacy: LegacyDecryptor | null = null;
+  private abort: AbortController | null = null;
+  private running: Promise<void> | null = null;
+
+  constructor(private readonly options: PipelineOptions) {
+    this.asset = options.asset;
+    this.preference = options.preference;
+    this.id = pipelineId(options.asset, null);
+    this.mount = `/track/${this.id}`;
+    this.directory = path.join(options.cacheRoot, this.id);
+  }
+
+  snapshot(): PipelineSnapshot {
+    return {
+      id: this.id,
+      state: this.state,
+      asset: this.asset,
+      variant: this.variant,
+      error: this.failure,
+      bytesIn: this.bytesIn,
+      startedAt: this.startedAt,
+    };
+  }
+
+  get isReady(): boolean {
+    return this.state === "streaming" || this.state === "complete";
+  }
+
+  /**
+   * Resolve the manifest and start ffmpeg. Returns as soon as the playlist file
+   * exists so the page can begin buffering; the download continues in the
+   * background.
+   */
+  /** Resolve the master playlist, preferring the wrapper manifest when configured. */
+  private async masterManifest(): Promise<{ text: string; baseUrl: string }> {
+    const service = this.options.manifestService?.trim();
+    if (service) {
+      try {
+        const url = await fetchDeviceManifest(this.asset.id, service);
+        return { text: await fetchText(url), baseUrl: url };
+      } catch (error) {
+        pipelineLog.warn(
+          `wrapper manifest unavailable (${error instanceof Error ? error.message : String(error)}); using the account API`,
+        );
+      }
+    }
+    return { text: await fetchText(this.asset.manifestUrl), baseUrl: this.asset.manifestUrl };
+  }
+
+  async prepare(): Promise<PreparedTrack> {
+    if (isComplete(this.directory)) {
+      this.state = "complete";
+      const playlist = await this.masterManifest()
+        .then((master) => master.text)
+        .catch(() => "");
+      this.variant = playlist
+        ? (selectVariant(
+            parseMasterPlaylist(playlist, this.asset.manifestUrl),
+            this.preference,
+          ) ?? null)
+        : null;
+      if (!this.variant) throw new Error("cached track lost its quality metadata");
+      pipelineLog.info(`cache hit ${this.asset.name} (${this.variant.label})`);
+      return { directory: this.directory, mount: this.mount, variant: this.variant };
+    }
+
+    const master = await this.masterManifest();
+    const variants = rankVariants(parseMasterPlaylist(master.text, master.baseUrl));
+    if (variants.length === 0) {
+      throw new Error("manifest listed no audio renditions");
+    }
+    const variant = selectVariant(variants, this.preference);
+    if (!variant) throw new Error("no rendition matched the quality preference");
+    this.variant = variant;
+
+    this.transcoder = createTranscoder({
+      outputDir: this.directory,
+      transform: this.options.transformOverride ?? transformFor(variant.codecs),
+      sampleRate: variant.sampleRate,
+      ffmpegPath: this.options.ffmpegPath,
+    });
+
+    this.running = this.pump(variant);
+    return { directory: this.directory, mount: this.mount, variant };
+  }
+
+  /** Wait for the current download to finish (or fail). */
+  async drain(): Promise<void> {
+    await this.running;
+  }
+
+  private setState(state: PipelineState, error?: string): void {
+    this.state = state;
+    if (error) {
+      this.failure = error;
+      pipelineLog.error(`${this.asset.name}: ${error}`);
+    }
+  }
+
+  private async pump(variant: AudioVariant): Promise<void> {
+    const transcoder = this.transcoder;
+    if (!transcoder) throw new Error("pipeline started without a transcoder");
+    this.abort = new AbortController();
+    try {
+      const playlistText = await fetchText(variant.uri);
+      const playlist = parseMediaPlaylist(playlistText, variant.uri);
+      if (playlist.segments.length === 0) throw new Error("media playlist had no segments");
+
+      // The initialisation segment carries the sample entry and the encryption
+      // parameters; rewrite it once and feed the plaintext version to ffmpeg.
+      if (!playlist.map) throw new Error("media playlist has no EXT-X-MAP initialiser");
+      const initResponse = await fetchStream(playlist.map.uri, {
+        range: playlist.map.byterange ? rangeHeader(playlist.map.byterange) : undefined,
+        signal: this.abort.signal,
+      });
+      const encryptedInit = Buffer.from(await initResponse.arrayBuffer());
+      const { init: plainInit, info } = rewriteInit(encryptedInit);
+      await transcoder.write(plainInit);
+
+      for (const segment of playlist.segments) {
+        const isEncrypted = Boolean(segment.key?.uri);
+        const keyUri = segment.key?.uri ?? "";
+        const response = await fetchStream(segment.uri, {
+          range: segment.byterange ? rangeHeader(segment.byterange) : undefined,
+          signal: this.abort.signal,
+        });
+        const encrypted = Buffer.from(await response.arrayBuffer());
+        this.bytesIn += encrypted.length;
+        const plain = isEncrypted
+          ? await this.decrypt(encrypted, keyUri, info)
+          : encrypted;
+        await transcoder.write(plain);
+        if (this.state === "preparing") this.setState("streaming");
+      }
+
+      await transcoder.finish();
+      this.setState("complete");
+      pipelineLog.info(
+        `complete ${this.asset.name} (${variant.label}) in ${Date.now() - this.startedAt}ms`,
+      );
+    } catch (error) {
+      if (this.abort.signal.aborted) {
+        this.setState("error", "cancelled");
+      } else {
+        this.setState("error", error instanceof Error ? error.message : String(error));
+      }
+      transcoder.kill();
+    }
+  }
+
+  /** Decrypt one fragment with whichever transport is configured. */
+  private async decrypt(
+    segment: Buffer,
+    keyUri: string,
+    info: Parameters<typeof decryptSegment>[2],
+  ): Promise<Buffer> {
+    if (this.options.decryptMode === "wrapper") {
+      const service = this.options.decryptorService?.trim();
+      if (!service) throw new Error("wrapper decrypt mode needs a decryptor service address");
+      const decryptor = (this.legacy ??= new LegacyDecryptor(service));
+      return decryptSegmentLegacy(segment, decryptor, {
+        adamId: this.asset.id,
+        keyUri,
+      });
+    }
+    const key = await this.resolveKey(keyUri);
+    return key ? decryptSegment(segment, key, info) : segment;
+  }
+
+  private async resolveKey(keyUri: string | undefined): Promise<Buffer | null> {
+    if (!keyUri) return null;
+    if (!keyUri.startsWith("skd://")) {
+      throw new Error(`unsupported key URI scheme: ${keyUri}`);
+    }
+    return this.options.keyCache.get({
+      adamId: this.asset.id,
+      keyUri,
+      storefront: this.asset.storefront,
+    });
+  }
+
+  /** Abort the download and tear down ffmpeg. */
+  cancel(): void {
+    this.abort?.abort();
+    this.transcoder?.kill();
+    this.legacy?.close();
+  }
+}
+
+/** Resolve a track's renditions without downloading any media. */
+export async function listQualities(asset: SongAsset): Promise<AudioVariant[]> {
+  const masterText = await fetchText(asset.manifestUrl);
+  return rankVariants(parseMasterPlaylist(masterText, asset.manifestUrl));
+}
+
+/** Exported for tests: resolve a pipeline's URL without touching the network. */
+export function pipelinePaths(cacheRoot: string, asset: SongAsset, variant: AudioVariant) {
+  const id = pipelineId(asset, variant);
+  const directory = path.join(cacheRoot, id);
+  return {
+    id,
+    directory,
+    playlist: path.join(directory, "playlist.m3u8"),
+    init: path.join(directory, "init.mp4"),
+  };
+}

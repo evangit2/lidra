@@ -1,43 +1,43 @@
-# Sidra vs Cider: Apple Music desktop client comparison
+# Lidra vs Cider: Apple Music desktop client comparison
 
 **Last updated:** 2026-09-06
-**Confidence note:** Cider v1 (open-source, AGPL-3.0) source analysis is historical. It does not describe Cider 4. Current Cider claims use official documentation and selected issue updates, without independent playback tests or access to proprietary source. Sidra claims use repository documentation and source. This update is not a fresh security audit or broad issue survey.
+**Confidence note:** Cider v1 (open-source, AGPL-3.0) source analysis is historical. It does not describe Cider 4. Current Cider claims use official documentation and selected issue updates, without independent playback tests or access to proprietary source. Lidra claims use repository documentation and source. This update is not a fresh security audit or broad issue survey.
 
 ---
 
 ## 1. Executive summary
 
-**If you want Apple's web playback without client-added DSP:** Sidra. It adds no audio processing or rerouting. Chromium and the OS can still process audio. This is not a measured fidelity or reliability ranking against Cider 4.
+**If you want Apple's web playback without client-added DSP:** Lidra. It adds no audio processing or rerouting. Chromium and the OS can still process audio. This is not a measured fidelity or reliability ranking against Cider 4.
 
 **If you want a custom UI with equaliser, visualisations, and themes:** Cider. It has a full-featured replacement interface with audio processing tools, immersive mode, and extensive theming.
 
-**If you care about public source auditability:** Sidra. It uses `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`, and an IPC channel allowlist. Cider 2+ source is proprietary and not publicly auditable. The Cider v1 security findings below do not establish Cider 4's security practices.
+**If you care about public source auditability:** Lidra. It uses `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`, and an IPC channel allowlist. Cider 2+ source is proprietary and not publicly auditable. The Cider v1 security findings below do not establish Cider 4's security practices.
 
-**If you use Linux:** Both clients support MPRIS and Linux ARM64. Sidra has direct, bi-directional media controls. Historical Cider MPRIS reports do not establish current behaviour: #1291 closed with a maintainer-reported 4.x fix, while #1301 closed without a confirmed fix.
+**If you use Linux:** Both clients support MPRIS and Linux ARM64. Lidra has direct, bi-directional media controls. Historical Cider MPRIS reports do not establish current behaviour: #1291 closed with a maintainer-reported 4.x fix, while #1301 closed without a confirmed fix.
 
-**If you want Apple Account sign-in to stay on supported desktop paths:** Sidra. It uses Apple's own web authentication, but hides passkey and "Sign in with iPhone" options that cannot complete in Electron because Chromium's QR-code UI lives outside the `//content` layer Electron ships.
+**If you want Apple Account sign-in to stay on supported desktop paths:** Lidra. It uses Apple's own web authentication, but hides passkey and "Sign in with iPhone" options that cannot complete in Electron because Chromium's QR-code UI lives outside the `//content` layer Electron ships.
 
-**If you want free, open-source software:** Sidra (Blue Oak 1.0.0 licence). Cider v1 was AGPL-3.0 but is archived. The official [itch.io purchase page](https://cidercollective.itch.io/cider/purchase) lists Cider at US$8.49 or more. Other storefront prices are unverified.
+**If you want free, open-source software:** Lidra (Blue Oak 1.0.0 licence). Cider v1 was AGPL-3.0 but is archived. The official [itch.io purchase page](https://cidercollective.itch.io/cider/purchase) lists Cider at US$8.49 or more. Other storefront prices are unverified.
 
 ---
 
 ## 2. Architecture overview
 
-### Sidra
+### Lidra
 
-Sidra loads `music.apple.com` and `classical.music.apple.com` directly inside CastLabs Electron (a Chromium fork with Widevine CDM support). A lightweight hook script (`musicKitHook.js`, injected after page load) taps MusicKit.js events and forwards them over Electron IPC to the main process. The main process distributes events to platform integrations (MPRIS, Discord, notifications, macOS Dock, Windows taskbar).
+Lidra loads `music.apple.com` and `classical.music.apple.com` directly inside stock Electron. A lightweight hook script (`musicKitHook.js`, injected after page load) taps MusicKit.js events and forwards them over Electron IPC to the main process. The main process distributes events to platform integrations (MPRIS, Discord, notifications, macOS Dock, Windows taskbar).
 
 ```
-music.apple.com / classical.music.apple.com (Apple's UI, with Sidra additions)
+music.apple.com / classical.music.apple.com (Apple's UI, with Lidra additions)
   -> MusicKit.js events
     -> musicKitHook.js (injected event bridge and playback controls)
       -> IPC -> player.ts (EventEmitter)
         -> Platform integrations
 ```
 
-Audio flows from MusicKit.js through the HTMLMediaElement into Chromium's native media stack. Sidra never intercepts, re-routes, or processes the audio stream. Controls flow in reverse via `webContents.send()` through the preload bridge to `window.__sidra` methods.
+Audio flows from MusicKit.js through the HTMLMediaElement into Chromium's native media stack. Lidra never intercepts, re-routes, or processes the audio stream. Controls flow in reverse via `webContents.send()` through the preload bridge to `window.__lidra` methods.
 
-**Key architectural property:** Sidra loads Apple's current web applications. Its injected navigation, themes, authentication adjustments and MusicKit bridge still need maintenance when Apple changes relevant behaviour.
+**Key architectural property:** Lidra loads Apple's current web applications. Its injected navigation, themes, authentication adjustments and MusicKit bridge still need maintenance when Apple changes relevant behaviour.
 
 ### Cider v1 (open source, archived)
 
@@ -55,7 +55,7 @@ Express server (localhost:9000)
 
 The audio pipeline intercepted the HTMLMediaElement output via `MediaElementAudioSourceNode`, routed it through a chain of Web Audio API processing nodes, and output to an `AudioContext` destination. This architecture enabled Cider's audio processing features but introduced multiple failure modes (detailed in section 3).
 
-**Runtime dependencies:** Cider v1 shipped approximately 30+ runtime npm dependencies including Express, music-metadata, node-fetch, chokidar, castv2-client, airtunes2, adm-zip, and youtube-search-without-api-key. Sidra ships 5 runtime dependencies: `@holusion/dbus-next`, `@xhayper/discord-rpc`, `electron-conf`, `electron-log`, and `electron-updater`.
+**Runtime dependencies:** Cider v1 shipped approximately 30+ runtime npm dependencies including Express, music-metadata, node-fetch, chokidar, castv2-client, airtunes2, adm-zip, and youtube-search-without-api-key. Lidra ships 5 runtime dependencies: `@holusion/dbus-next`, `@xhayper/discord-rpc`, `electron-conf`, `electron-log`, and `electron-updater`.
 
 ### Cider 2+ (proprietary)
 
@@ -103,24 +103,24 @@ In v1, CAP uses convolution reverb with impulse response files (`CAP_64.wav`, `C
 
 CAP adapts based on detected bitrate: different impulse responses for 64 kbps, 256 kbps, and lossless passthrough. When lossless audio is detected, CAP disables itself ("Non-Lossy Bitrate" passthrough). However, the audio still passes through the 96 kHz AudioContext and the rest of the DSP chain.
 
-### Sidra's approach
+### Lidra's approach
 
-Sidra adds no `AudioContext`, DSP or audio rerouting. Audio uses Apple's web player, Chromium's media pipeline and the OS audio subsystem. Decoding, resampling, mixing and system effects can occur downstream, so this is not a bit-perfect guarantee.
+Lidra adds no `AudioContext`, DSP or audio rerouting. Audio uses Apple's web player, Chromium's media pipeline and the OS audio subsystem. Decoding, resampling, mixing and system effects can occur downstream, so this is not a bit-perfect guarantee.
 
 ### Lossless and Dolby Atmos
 
-| Capability | Sidra | Cider |
+| Capability | Lidra | Cider |
 |---|---|---|
 | AAC 256 kbps | Yes (all platforms) | Yes (all platforms) |
-| ALAC lossless (16/44.1, 16/48) | macOS and Windows (with EVS production VMP signing) | Vendor claims, current platform coverage not independently verified |
+| ALAC lossless (16/44.1, 16/48) | Native audio pipeline, no Chromium DRM | Vendor claims, current platform coverage not independently verified |
 | ALAC hi-res lossless (24/96, 24/192) | Limited by the web player and Chromium DRM path | Current formats, rates and platform coverage unverified |
-| Dolby Atmos / Spatial Audio | Not supported by Sidra's web playback path | Cider 4 documents Atmos/spatial audio assets, playback and platform coverage not independently verified |
+| Dolby Atmos / Spatial Audio | Not supported by Lidra's web playback path | Cider 4 documents Atmos/spatial audio assets, playback and platform coverage not independently verified |
 
-**Important context:** Cider v1's stereo spatial effect does not describe Cider 4's documented Atmos work. Cider 4 replaced MusicKit.js, so Sidra's web playback limits cannot establish Cider 4's format or DRM limits. Confirm the required format on your platform before purchase.
+**Important context:** Cider v1's stereo spatial effect does not describe Cider 4's documented Atmos work. Cider 4 replaced MusicKit.js, so Lidra's web playback limits cannot establish Cider 4's format or DRM limits. Confirm the required format on your platform before purchase.
 
-### Widevine DRM
+### Audio pipeline
 
-Sidra uses CastLabs Electron (CastLabs ECS), which bundles Widevine and supports production VMP signing on macOS and Windows. Sidra uses software decryption on Linux. Cider 4's current DRM implementation and platform limits are unverified here.
+Lidra uses stock Electron; native audio pipeline, no Chromium DRM. Cider 4's current DRM implementation and platform limits are unverified here.
 
 ---
 
@@ -128,21 +128,21 @@ Sidra uses CastLabs Electron (CastLabs ECS), which bundles Widevine and supports
 
 ### Linux
 
-| Feature | Sidra | Cider |
+| Feature | Lidra | Cider |
 |---|---|---|
-| MPRIS service | `org.mpris.MediaPlayer2.sidra` via dbus-next, bi-directional (play, pause, next, prev, seek, volume, open URI) | Supported, historical reports below are not a current reliability test |
+| MPRIS service | `org.mpris.MediaPlayer2.lidra` via dbus-next, bi-directional (play, pause, next, prev, seek, volume, open URI) | Supported, historical reports below are not a current reliability test |
 | playerctl recognition | Supported | #1291 closed 25 April 2026, maintainer reports a 4.x fix |
 | Track metadata accuracy | `mpris:length` set from MusicKit `durationInMillis` | #1301 reported max-int64 lengths, closed 13 June 2026 as stale/not planned without a confirmed fix |
 | MPRIS Volume | Controls MusicKit software volume; feedback loop suppression; matches Rhythmbox/Spotify/VLC behaviour | Volume sync issues documented in Cider v1 due to AudioContext sitting between MPRIS and output |
 | Wayland support | Native via Chromium | Supported in earlier Electron builds, current runtime map unverified |
 | X11 support | Yes | Yes |
-| PulseAudio/PipeWire identity | Corrected via `AudioServiceOutOfProcess` disable + `setDesktopName('sidra.desktop')` | Current identity unverified |
+| PulseAudio/PipeWire identity | Corrected via `AudioServiceOutOfProcess` disable + `setDesktopName('lidra.desktop')` | Current identity unverified |
 | Desktop notifications | Track notifications use D-Bus, with Previous/Next controls when the daemon supports actions. Other notifications use Electron and require libnotify on NixOS | Supported |
 | Stability on Linux | No current comparative stability test | Historical reports include #1373, #1280 and #1367, not evidence of universal Cider 4 behaviour |
 
 ### macOS
 
-| Feature | Sidra | Cider |
+| Feature | Lidra | Cider |
 |---|---|---|
 | Now Playing widget | Yes, via Chromium's native mediaSession bridge | Yes |
 | Dock menu | Playback controls (play/pause, next, previous) | Custom UI controls |
@@ -153,7 +153,7 @@ Sidra uses CastLabs Electron (CastLabs ECS), which bundles Widevine and supports
 
 ### Windows
 
-| Feature | Sidra | Cider |
+| Feature | Lidra | Cider |
 |---|---|---|
 | GSMTC media flyout | Yes, via Chromium's native mediaSession bridge | Documented in earlier clients, current runtime map unverified |
 | Taskbar thumbnail toolbar | Play/pause, next, previous | Custom implementation |
@@ -198,11 +198,11 @@ These historical settings conflict with Electron security guidance. This update 
 
 Cider 2+ source is not publicly available for the review used above. Binary and runtime audits remain possible, but this comparison includes neither. Earlier .NET/Electron client metadata does not establish Cider 4's security practices.
 
-### Sidra (source practices and historical audit results)
+### Lidra (source practices and historical audit results)
 
 The previous comparison reported zero findings from Semgrep, Gitleaks and OSV-Scanner. Those historical results are not a current audit. The source-level practices are:
 
-| Practice | Sidra | Electron best practice |
+| Practice | Lidra | Electron best practice |
 |---|---|---|
 | `contextIsolation` | `true` (all windows) | `true` |
 | `nodeIntegration` | `false` (all windows) | `false` |
@@ -211,11 +211,11 @@ The previous comparison reported zero findings from Semgrep, Gitleaks and OSV-Sc
 | IPC | Allowlisted `SEND_CHANNELS` in preload; blocked channels log warning | Channel validation |
 | Node APIs in renderer | None exposed | None |
 | External URL validation | Protocol check (`http:`/`https:`) before `shell.openExternal()` | Protocol validation |
-| CSP | Apple's CSP on its web pages, explicit CSP on Sidra's local windows | Application-level CSP |
+| CSP | Apple's CSP on its web pages, explicit CSP on Lidra's local windows | Application-level CSP |
 | Dependency count | 5 runtime deps | Minimise attack surface |
 | Automated scanning | Historical scan results only, not rerun for this update | Regular scanning |
 
-**Windows update limitation:** Sidra is unsigned. Its `verifyUpdateCodeSignature` callback accepts updates without signature verification. This is not a claim that no other security issues exist.
+**Windows update limitation:** Lidra is unsigned. Its `verifyUpdateCodeSignature` callback accepts updates without signature verification. This is not a claim that no other security issues exist.
 
 ---
 
@@ -228,15 +228,15 @@ The previous comparison reported zero findings from Semgrep, Gitleaks and OSV-Sc
 | 2020-2021 | Apple-Music-Electron | GPL-3.0 | Archived, read-only |
 | 2021-2024 | Cider v1 | AGPL-3.0 | Archived December 2024, read-only |
 | 2023-present | Cider 2+ | Proprietary | Active, paid (itch.io: US$8.49 or more) |
-| 2025-present | Sidra | Blue Oak 1.0.0 | Active, free and open source |
+| 2025-present | Lidra | Blue Oak 1.0.0 | Active, free and open source |
 
 ### Implications
 
-**Auditability:** Sidra's full source code is public. Cider 2+ source is not publicly auditable, although binary and runtime testing remain possible. Cider v1's source remains readable on GitHub but is no longer maintained.
+**Auditability:** Lidra's full source code is public. Cider 2+ source is not publicly auditable, although binary and runtime testing remain possible. Cider v1's source remains readable on GitHub but is no longer maintained.
 
-**Forkability:** Sidra can be forked, modified, and redistributed under the Blue Oak licence. Cider v1 can theoretically be forked (AGPL-3.0), but the archived codebase carries the security issues documented above. Cider 2+ cannot be forked.
+**Forkability:** Lidra can be forked, modified, and redistributed under the Blue Oak licence. Cider v1 can theoretically be forked (AGPL-3.0), but the archived codebase carries the security issues documented above. Cider 2+ cannot be forked.
 
-**Business model:** Cider 2+ operates as a paid product. This funds development but introduces a commercial dependency - users who paid for Cider have no recourse if the project is abandoned or the developer makes changes they disagree with. Sidra is community-funded via GitHub Sponsors.
+**Business model:** Cider 2+ operates as a paid product. This funds development but introduces a commercial dependency - users who paid for Cider have no recourse if the project is abandoned or the developer makes changes they disagree with. Lidra is community-funded via GitHub Sponsors.
 
 **Community trust:** Cider's transition from open source to proprietary generated community friction. The original open-source project (7,100+ GitHub stars) was archived. Users who contributed to the open-source project saw their contributions incorporated into a paid product. This is legally permitted under AGPL-3.0 by the copyright holder but has affected community goodwill.
 
@@ -244,17 +244,17 @@ The previous comparison reported zero findings from Semgrep, Gitleaks and OSV-Sc
 
 ## 7. Feature comparison
 
-| Feature | Sidra | Cider |
+| Feature | Lidra | Cider |
 |---|---|---|
 | **Audio** | | |
-| Client-added audio processing | No Sidra-added DSP or rerouting, not a bit-perfect guarantee | Cider 4 documents a custom audio system and DSP |
+| Client-added audio processing | No Lidra-added DSP or rerouting, not a bit-perfect guarantee | Cider 4 documents a custom audio system and DSP |
 | Equaliser | No | Yes (parametric EQ) |
-| Audio normalisation | No Sidra-added normalisation | Cider 4 documents LUFS normalisation |
+| Audio normalisation | No Lidra-added normalisation | Cider 4 documents LUFS normalisation |
 | CAP audio processor | No | Historical CAP analysis above, current implementation unverified |
 | Spatial audio / Atmos | No | Cider 4 documents Atmos/spatial assets, see audio caveat above |
-| Lossless (macOS/Windows) | Yes (EVS production VMP) | Vendor claims, platform coverage not independently verified |
+| Lossless (macOS/Windows) | Native audio pipeline, no Chromium DRM | Vendor claims, platform coverage not independently verified |
 | **Interface** | | |
-| UI | Apple's `music.apple.com` and `classical.music.apple.com`, with Sidra additions | Custom UI, Vue.js documented in earlier versions |
+| UI | Apple's `music.apple.com` and `classical.music.apple.com`, with Lidra additions | Custom UI, Vue.js documented in earlier versions |
 | Themes | Apple Music default, eight bundled themes and one JSON-based Custom Theme. Colours apply to both services and Settings | Extensive theming system |
 | Immersive/fullscreen mode | No | Yes (album art visualisation) |
 | Mini player | None bundled, external MPRIS MiniPlayer on Linux | Built-in mini-player and microplayer |
@@ -283,9 +283,9 @@ The previous comparison reported zero findings from Semgrep, Gitleaks and OSV-Sc
 | Open source | Yes (Blue Oak 1.0.0) | No (v1 archived; 2+ proprietary) |
 | Price | Free | US$8.49 or more on itch.io, other storefront prices unverified |
 
-Christian Lauinger built [MPRIS MiniPlayer](https://github.com/ChrisLauinger77/mpris-miniplayer) after requesting a mini player in [Sidra #125](https://github.com/wimpysworld/sidra/issues/125). It controls any MPRIS player on Linux, not only Sidra. Cider documents its built-in alternatives in the [2.3.0](https://cidercollective.itch.io/cider/devlog/674855/cider-v230) and [3.0](https://cidercollective.itch.io/cider/devlog/944519/cider-30-dreaming-even-bigger) devlogs.
+Christian Lauinger built [MPRIS MiniPlayer](https://github.com/ChrisLauinger77/mpris-miniplayer) after requesting a mini player in [Lidra #125](https://github.com/evangit2/lidra/issues/125). It controls any MPRIS player on Linux, not only Lidra. Cider documents its built-in alternatives in the [2.3.0](https://cidercollective.itch.io/cider/devlog/674855/cider-v230) and [3.0](https://cidercollective.itch.io/cider/devlog/944519/cider-30-dreaming-even-bigger) devlogs.
 
-Sidra Settings opens from the gear button, <kbd>Ctrl</kbd>+<kbd>,</kbd> on Linux/Windows, or <kbd>Cmd</kbd>+<kbd>,</kbd> on macOS. The player must have focus for the shortcut.
+Lidra Settings opens from the gear button, <kbd>Ctrl</kbd>+<kbd>,</kbd> on Linux/Windows, or <kbd>Cmd</kbd>+<kbd>,</kbd> on macOS. The player must have focus for the shortcut.
 
 The [Cider ARM64 maintainer reply](https://github.com/ciderapp/Cider-2/issues/1825#issuecomment-5228949176), dated 9 August 2026, names Taproom and the Cider Collective Repository for select distributions. This is not a guarantee for every Asahi Linux setup.
 
@@ -299,9 +299,9 @@ Cider's GameMode reduces CPU use. It does not establish controller navigation su
 
 ### How each handles Apple Music updates
 
-**Sidra:** Loads `music.apple.com` and `classical.music.apple.com` directly, so Apple's web player updates arrive without a replacement UI release. Sidra's MusicKit bridge, injected navigation, themes and authentication adjustments still need compatibility work when Apple changes relevant behaviour.
+**Lidra:** Loads `music.apple.com` and `classical.music.apple.com` directly, so Apple's web player updates arrive without a replacement UI release. Lidra's MusicKit bridge, injected navigation, themes and authentication adjustments still need compatibility work when Apple changes relevant behaviour.
 
-Sidra also keeps Apple's authentication UI, but filters impossible desktop choices. Apple's passkey and "Sign in with iPhone" buttons rely on WebAuthn cross-device transport and Chromium's `//chrome` product UI for the QR-code modal. Electron only ships `//content`, so Sidra hides those options in the auth iframe and leaves the password flow visible.
+Lidra also keeps Apple's authentication UI, but filters impossible desktop choices. Apple's passkey and "Sign in with iPhone" buttons rely on WebAuthn cross-device transport and Chromium's `//chrome` product UI for the QR-code modal. Electron only ships `//content`, so Lidra hides those options in the auth iframe and leaves the password flow visible.
 
 **Cider:** Builds a custom UI and, in Cider 4, uses MKLite instead of MusicKit.js. Its developers maintain those components against Apple's service changes. This comparison does not measure either project's maintenance burden or response time.
 
@@ -319,23 +319,23 @@ The earlier comparison collected these issue tracker and community reports. They
 - **Broken state on fast track switching** (issue #1367): "Quickly switching songs occasionally puts the player into a broken state" on Linux.
 - **Session logout mid-playback** (issue #1372): "Cider keeps logging me out mid session, reducing songs to shortened versions" on Windows.
 
-### Documented reliability issues (Sidra)
+### Documented reliability issues (Lidra)
 
-Sidra adds no AudioContext or DSP chain, so it does not introduce the v1 processing failures described above. Its wedge detector handles playback stalls, but this update includes no production activation data or comparative reliability test.
+Lidra adds no AudioContext or DSP chain, so it does not introduce the v1 processing failures described above. Its wedge detector handles playback stalls, but this update includes no production activation data or comparative reliability test.
 
-Sidra still depends on Apple's web player, Chromium, the CDM and its own integrations. The effects of faults differ by client and platform.
+Lidra still depends on Apple's web player, Chromium, the CDM and its own integrations. The effects of faults differ by client and platform.
 
 ---
 
 ## 9. Who should use which
 
-### Choose Sidra if you:
+### Choose Lidra if you:
 
-- Want Apple's web playback without Sidra-added DSP or audio rerouting
+- Want Apple's web playback without Lidra-added DSP or audio rerouting
 - Use Linux and want bi-directional MPRIS media controls
 - Care about security and want an auditable open-source codebase
 - Prefer Apple's web interface to a replacement UI
-- Want Apple Music web player improvements as Apple ships them, with some Sidra compatibility maintenance
+- Want Apple Music web player improvements as Apple ships them, with some Lidra compatibility maintenance
 - Want Apple Account sign-in without unsupported Electron passkey/iPhone dead ends
 - Do not want to pay for a music client on top of your Apple Music subscription
 - Need MDM bypass on macOS for Apple ID authentication
@@ -345,23 +345,23 @@ Sidra still depends on Apple's web player, Chromium, the CDM and its own integra
 - Want a custom UI that differs from Apple's web player
 - Want audio tools such as equalisation, LUFS normalisation, Automix or spectral crossfade
 - Want immersive/fullscreen visualisation mode
-- Want extensive theming beyond what Sidra offers
+- Want extensive theming beyond what Lidra offers
 - Want a built-in mini-player or the Android remote companion
 - Are comfortable with proprietary software and the itch.io price of US$8.49 or more
 
 ### Check before choosing if you:
 
-- Need verified Dolby Atmos playback. Sidra does not support it, and Cider 4's documented support lacks independent platform verification here
+- Need verified Dolby Atmos playback. Lidra does not support it, and Cider 4's documented support lacks independent platform verification here
 - Need verified hi-res lossless. Use Apple's native apps on supported hardware, or confirm Cider's formats and rates on your platform
-- Want a fully native, non-Electron application. Sidra uses Electron, and Cider 4's runtime map is unverified here
+- Want a fully native, non-Electron application. Lidra uses Electron, and Cider 4's runtime map is unverified here
 
 ---
 
 ## Methodology and confidence
 
-| Section | Sidra confidence | Cider confidence | Source |
+| Section | Lidra confidence | Cider confidence | Source |
 |---|---|---|---|
-| Architecture | Source-supported | Source-supported (v1), vendor-documented (4) | Sidra: source. Cider v1: source. Cider 4: official changelog, current runtime map unverified |
+| Architecture | Source-supported | Source-supported (v1), vendor-documented (4) | Lidra: source. Cider v1: source. Cider 4: official changelog, current runtime map unverified |
 | Audio quality | No client-added DSP, output not measured | v1 configuration verified, Cider 4 output not tested | Source and vendor documentation do not establish measured fidelity |
 | Platform integration | Source and README | Selected official documentation and issue outcomes | No current cross-platform runtime comparison |
 | Security | Source practices, historical scans only | v1 source findings only | No fresh audit, Cider 2+ source not publicly available |

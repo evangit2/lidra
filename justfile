@@ -6,7 +6,6 @@ default:
 install:
     npm install
     @just _fix-frameworks
-    @just _sign-evs
 
 # Restore macOS framework symlinks that extract-zip breaks during npm install
 [macos]
@@ -41,24 +40,8 @@ _fix-frameworks:
 [private]
 _fix-frameworks:
 
-# Sign the local Electron binary with CastLabs EVS VMP
-[macos]
-[private]
-_sign-evs:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if [ ! -d "node_modules/electron/dist/Electron.app" ]; then
-        exit 0
-    fi
-    evs_package=$(node -p "require('./build/evs.cjs').EVS_PACKAGE")
-    uvx --from "$evs_package" evs-vmp sign-pkg node_modules/electron/dist
-
-[linux]
-[private]
-_sign-evs:
-
 # Build TypeScript into dist/ and write credentials because npx tsc runs no npm hook
-build: _fix-frameworks _sign-evs
+build: _fix-frameworks
     node scripts/inject-lastfm-credentials.cjs
     npx tsc
 
@@ -72,11 +55,11 @@ run-debug: build
 
 # Run with DevTools open (builds first)
 run-devtools: build
-    SIDRA_DEVTOOLS=1 npx electron .
+    LIDRA_DEVTOOLS=1 npx electron .
 
 # Run with debug logging and DevTools (builds first)
 run-inspect: build
-    ELECTRON_LOG_LEVEL=debug SIDRA_DEVTOOLS=1 npx electron .
+    ELECTRON_LOG_LEVEL=debug LIDRA_DEVTOOLS=1 npx electron .
 
 # Run without building (use after initial build for faster iteration)
 run-fast:
@@ -88,7 +71,7 @@ run-cdp PORT="9222": build
 
 # Run with CDP, debug logging, and DevTools (builds first)
 run-cdp-inspect PORT="9222": build
-    ELECTRON_LOG_LEVEL=debug SIDRA_DEVTOOLS=1 npx electron . --remote-debugging-port={{PORT}} --remote-debugging-address=127.0.0.1
+    ELECTRON_LOG_LEVEL=debug LIDRA_DEVTOOLS=1 npx electron . --remote-debugging-port={{PORT}} --remote-debugging-address=127.0.0.1
 
 # Run with CDP without building (use after initial build for faster iteration)
 run-cdp-fast PORT="9222":
@@ -130,8 +113,8 @@ _generate-app-icons:
 # Generate DMG background PNGs from SVG source
 [private]
 _generate-dmg-background:
-    rsvg-convert -w 540 -h 380 -o build/background.png assets/source/sidra-background.svg
-    rsvg-convert -w 1080 -h 760 -o build/background@2x.png assets/source/sidra-background.svg
+    rsvg-convert -w 540 -h 380 -o build/background.png assets/source/lidra-background.svg
+    rsvg-convert -w 1080 -h 760 -o build/background@2x.png assets/source/lidra-background.svg
     optipng -strip all -o7 -quiet build/background.png build/background@2x.png
 
 # Generate tray icon PNGs from SVG source
@@ -139,38 +122,38 @@ _generate-dmg-background:
 _generate-tray-icon: _generate-tray-outline
     #!/usr/bin/env bash
     set -euo pipefail
-    src="assets/source/sidra-tray-symbol.svg"
+    src="assets/source/lidra-tray-symbol.svg"
     out="assets/icons"
     # macOS Template icons (black on transparent, macOS handles theme adaptation)
-    rsvg-convert -w 16 -h 16 -o "$out/sidraTemplate.png" "$src"
-    rsvg-convert -w 32 -h 32 -o "$out/sidraTemplate@2x.png" "$src"
+    rsvg-convert -w 16 -h 16 -o "$out/lidraTemplate.png" "$src"
+    rsvg-convert -w 32 -h 32 -o "$out/lidraTemplate@2x.png" "$src"
     # Black monochrome icons
-    rsvg-convert -w 24 -h 24 -o "$out/sidra-tray-light.png" "$src"
-    rsvg-convert -w 48 -h 48 -o "$out/sidra-tray-light@2x.png" "$src"
-    rsvg-convert -w 24 -h 24 -o "$out/sidra-tray.png" "$src"
-    rsvg-convert -w 48 -h 48 -o "$out/sidra-tray@2x.png" "$src"
+    rsvg-convert -w 24 -h 24 -o "$out/lidra-tray-light.png" "$src"
+    rsvg-convert -w 48 -h 48 -o "$out/lidra-tray-light@2x.png" "$src"
+    rsvg-convert -w 24 -h 24 -o "$out/lidra-tray.png" "$src"
+    rsvg-convert -w 48 -h 48 -o "$out/lidra-tray@2x.png" "$src"
     # White monochrome icons
     sed 's/<svg /<svg fill="#FFFFFF" /' "$src" \
-        | rsvg-convert -w 24 -h 24 -o "$out/sidra-tray-dark.png"
+        | rsvg-convert -w 24 -h 24 -o "$out/lidra-tray-dark.png"
     sed 's/<svg /<svg fill="#FFFFFF" /' "$src" \
-        | rsvg-convert -w 48 -h 48 -o "$out/sidra-tray-dark@2x.png"
+        | rsvg-convert -w 48 -h 48 -o "$out/lidra-tray-dark@2x.png"
     optipng -strip all -o7 -quiet \
-        "$out/sidraTemplate.png" \
-        "$out/sidraTemplate@2x.png" \
-        "$out/sidra-tray-light.png" \
-        "$out/sidra-tray-light@2x.png" \
-        "$out/sidra-tray-dark.png" \
-        "$out/sidra-tray-dark@2x.png" \
-        "$out/sidra-tray.png" \
-        "$out/sidra-tray@2x.png"
+        "$out/lidraTemplate.png" \
+        "$out/lidraTemplate@2x.png" \
+        "$out/lidra-tray-light.png" \
+        "$out/lidra-tray-light@2x.png" \
+        "$out/lidra-tray-dark.png" \
+        "$out/lidra-tray-dark@2x.png" \
+        "$out/lidra-tray.png" \
+        "$out/lidra-tray@2x.png"
 
 # Derive the outline SVG and generate GNOME tray icons
 [private]
 _generate-tray-outline:
     python3 scripts/generate-tray-outline.py
-    rsvg-convert -w 24 -h 24 -o assets/icons/sidra-tray-outline.png assets/source/sidra-tray-outline.svg
-    rsvg-convert -w 48 -h 48 -o assets/icons/sidra-tray-outline@2x.png assets/source/sidra-tray-outline.svg
-    optipng -strip all -o7 -quiet assets/icons/sidra-tray-outline.png assets/icons/sidra-tray-outline@2x.png
+    rsvg-convert -w 24 -h 24 -o assets/icons/lidra-tray-outline.png assets/source/lidra-tray-outline.svg
+    rsvg-convert -w 48 -h 48 -o assets/icons/lidra-tray-outline@2x.png assets/source/lidra-tray-outline.svg
+    optipng -strip all -o7 -quiet assets/icons/lidra-tray-outline.png assets/icons/lidra-tray-outline@2x.png
 
 # Generate tray menu icon PNGs from SVG sources
 [private]
@@ -199,21 +182,21 @@ clean:
     rm -rf dist/
 
 # The cache directory is lowercase because src/artwork.ts builds it from app.getName().toLowerCase()
-# Clear all Sidra user data and caches
+# Clear all Lidra user data and caches
 [macos]
 clear:
-    rm -rf ~/Library/Application\ Support/Sidra
-    rm -rf ~/Library/Caches/sidra
-    rm -rf ~/Library/Logs/Sidra
-    @echo "Sidra data cleared"
+    rm -rf ~/Library/Application\ Support/Lidra
+    rm -rf ~/Library/Caches/lidra
+    rm -rf ~/Library/Logs/Lidra
+    @echo "Lidra data cleared"
 
 # The cache directory is lowercase because src/artwork.ts builds it from app.getName().toLowerCase()
-# Clear all Sidra user data and caches
+# Clear all Lidra user data and caches
 [linux]
 clear:
-    rm -rf ~/.config/Sidra
-    rm -rf ~/.cache/sidra
-    @echo "Sidra data cleared"
+    rm -rf ~/.config/Lidra
+    rm -rf ~/.cache/lidra
+    @echo "Lidra data cleared"
 
 # This recipe makes a fast local package, not a release build. Add release targets to
 # .github/workflows/builder.yml and package.json build.linux.target instead.
@@ -235,14 +218,14 @@ package: build
 # Show log file location and tail recent entries
 [linux]
 logs:
-    @echo "Log file: ~/.config/Sidra/logs/main.log"
-    @tail -50 ~/.config/Sidra/logs/main.log 2>/dev/null || echo "No log file yet. Run the app first."
+    @echo "Log file: ~/.config/Lidra/logs/main.log"
+    @tail -50 ~/.config/Lidra/logs/main.log 2>/dev/null || echo "No log file yet. Run the app first."
 
 # Show log file location and tail recent entries
 [macos]
 logs:
-    @echo "Log file: ~/Library/Logs/Sidra/main.log"
-    @tail -50 ~/Library/Logs/Sidra/main.log 2>/dev/null || echo "No log file yet. Run the app first."
+    @echo "Log file: ~/Library/Logs/Lidra/main.log"
+    @tail -50 ~/Library/Logs/Lidra/main.log 2>/dev/null || echo "No log file yet. Run the app first."
 
 # Cut a release: just release 1.2.3
 release VERSION:

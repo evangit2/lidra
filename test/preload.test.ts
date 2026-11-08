@@ -151,7 +151,7 @@ afterEach(() => {
 
 describe('controller polling in the preload', () => {
   it('compiles without a relative runtime require', () => {
-    const outputDirectory = mkdtempSync(join(tmpdir(), 'sidra-preload-'));
+    const outputDirectory = mkdtempSync(join(tmpdir(), 'lidra-preload-'));
     try {
       execFileSync(process.execPath, [
         'node_modules/typescript/lib/tsc.js',

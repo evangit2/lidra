@@ -33,15 +33,15 @@
         system:
         let
           pkgs = import nixpkgs { inherit system; };
-          sidra =
+          lidra =
             if pkgs.stdenv.hostPlatform.isDarwin then
               pkgs.callPackage ./nix/darwin.nix { inherit version; }
             else
               pkgs.callPackage ./nix/linux.nix { inherit version; };
         in
         {
-          inherit sidra;
-          default = sidra;
+          inherit lidra;
+          default = lidra;
         }
       );
 
@@ -95,15 +95,12 @@
                 playwrightMcpChromium
                 python3Minimal # asset generation scripts (app icons, tray outline, README image)
               ]
-              ++ lib.optionals stdenv.hostPlatform.isDarwin [
-                uv # required for EVS VMP signing via uvx
-              ]
               ++ lib.optionals stdenv.hostPlatform.isLinux [
                 gsettings-desktop-schemas
               ]
               ++ import ./nix/loader.nix { inherit pkgs; };
 
-            # CastLabs Electron (installed via npm) is a prebuilt binary that
+            # Electron (installed via npm) is a prebuilt binary that
             # expects libraries in standard FHS paths. On NixOS we must set
             # LD_LIBRARY_PATH explicitly for the libraries it links against.
             LD_LIBRARY_PATH = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux (
@@ -148,7 +145,7 @@
               fi
               export XDG_DATA_DIRS="${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}''${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}"
             '') + ''
-              echo "Sidra development shell"
+              echo "Lidra development shell"
               echo "  node: $(node --version)"
               echo "  npm:  $(npm --version)"
               echo ""

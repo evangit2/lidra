@@ -24,7 +24,7 @@ function isRouteToken(value: string | null): value is ItmsRouteToken {
 }
 
 /**
- * Validates one itms:// URL and converts it to something Sidra can open. This is a
+ * Validates one itms:// URL and converts it to something Lidra can open. This is a
  * trust boundary: the URL arrives from the OS, so a bad scheme or host is null, and
  * a /deeplink path is null unless its `p` token is on the allowlist. Any other path
  * becomes an HTTPS catalogue URL with the `app` parameter stripped.

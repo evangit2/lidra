@@ -44,7 +44,7 @@ const mockTrayStrings: TrayStrings = {
   lastfm: "Last.fm",
   customScrobbler: "Custom scrobbler",
   lastfmConnected: "Connected",
-  about: "About Sidra",
+  about: "About Lidra",
   quit: "Quit",
   notifications: "Notifications",
   discord: "Discord",
@@ -80,8 +80,8 @@ const mockTrayStrings: TrayStrings = {
   volume: "Volume",
   mute: "Mute",
   share: "Share",
-  hideWindow: "Hide Sidra",
-  showWindow: "Show Sidra",
+  hideWindow: "Hide Lidra",
+  showWindow: "Show Lidra",
   closeToTray: "Close to tray",
 };
 
@@ -144,7 +144,7 @@ vi.mock("../src/artwork", () => ({
 vi.mock("../src/paths", () => ({
   getAssetPath: vi.fn((...parts: string[]) => parts.join("/")),
   getProductInfo: () => ({
-    productName: "Sidra",
+    productName: "Lidra",
     description: "Apple Music client",
     author: "Test",
     license: "MIT",
@@ -356,8 +356,8 @@ describe("createTray - menu template inspection", () => {
   });
 
   it.each([
-    ["win32", "sidra-tray.png"],
-    ["darwin", "sidraTemplate.png"],
+    ["win32", "lidra-tray.png"],
+    ["darwin", "lidraTemplate.png"],
   ] as const)(
     "keeps the %s tray icon when the environment names GNOME",
     (platform, icon) => {
@@ -412,7 +412,7 @@ describe("createTray - menu template inspection", () => {
         });
         const tray = createTray() as Tray & { icon: string };
 
-        expect(tray.icon).toBe("assets/icons/sidra-tray-outline.png");
+        expect(tray.icon).toBe("assets/icons/lidra-tray-outline.png");
       },
     );
 
@@ -434,7 +434,7 @@ describe("createTray - menu template inspection", () => {
         const tray = createTray() as Tray & { icon: string };
 
         expect(tray.icon).toBe(
-          `assets/icons/sidra-tray-${dark ? "dark" : "light"}.png`,
+          `assets/icons/lidra-tray-${dark ? "dark" : "light"}.png`,
         );
       },
     );
@@ -442,15 +442,15 @@ describe("createTray - menu template inspection", () => {
     it("uses plain text label for About on Linux", () => {
       createTray();
       const template = getLastTemplate();
-      const aboutItem = findItem(template, "About Sidra");
+      const aboutItem = findItem(template, "About Lidra");
       expect(aboutItem).toBeDefined();
-      expect(aboutItem!.label).toBe("About Sidra");
+      expect(aboutItem!.label).toBe("About Lidra");
     });
 
     it("attaches icon to About on Linux", () => {
       createTray();
       const template = getLastTemplate();
-      const aboutItem = findItem(template, "About Sidra");
+      const aboutItem = findItem(template, "About Lidra");
       expect(aboutItem!.icon).toBeDefined();
     });
 
@@ -529,15 +529,15 @@ describe("createTray - menu template inspection", () => {
     it("uses plain text label for About on Windows", () => {
       createTray();
       const template = getLastTemplate();
-      const aboutItem = findItem(template, "About Sidra");
+      const aboutItem = findItem(template, "About Lidra");
       expect(aboutItem).toBeDefined();
-      expect(aboutItem!.label).toBe("About Sidra");
+      expect(aboutItem!.label).toBe("About Lidra");
     });
 
     it("attaches icon to About on Windows", () => {
       createTray();
       const template = getLastTemplate();
-      const aboutItem = findItem(template, "About Sidra");
+      const aboutItem = findItem(template, "About Lidra");
       expect(aboutItem!.icon).toBeDefined();
     });
 
@@ -575,15 +575,15 @@ describe("createTray - menu template inspection", () => {
     it("uses plain text label for About on macOS Tahoe+", () => {
       createTray();
       const template = getLastTemplate();
-      const aboutItem = findItem(template, "About Sidra");
+      const aboutItem = findItem(template, "About Lidra");
       expect(aboutItem).toBeDefined();
-      expect(aboutItem!.label).toBe("About Sidra");
+      expect(aboutItem!.label).toBe("About Lidra");
     });
 
     it("attaches SF Symbol icon to About on macOS Tahoe+", () => {
       createTray();
       const template = getLastTemplate();
-      const aboutItem = findItem(template, "About Sidra");
+      const aboutItem = findItem(template, "About Lidra");
       expect(aboutItem!.icon).toBeDefined();
       expect(vi.mocked(nativeImage.createFromNamedImage)).toHaveBeenCalledWith(
         "info.circle",
@@ -614,15 +614,15 @@ describe("createTray - menu template inspection", () => {
     it("uses plain text label for About on pre-Tahoe macOS", () => {
       createTray();
       const template = getLastTemplate();
-      const aboutItem = findItem(template, "About Sidra");
+      const aboutItem = findItem(template, "About Lidra");
       expect(aboutItem).toBeDefined();
-      expect(aboutItem!.label).toBe("About Sidra");
+      expect(aboutItem!.label).toBe("About Lidra");
     });
 
     it("does not attach icon to About on pre-Tahoe macOS", () => {
       createTray();
       const template = getLastTemplate();
-      const aboutItem = findItem(template, "About Sidra");
+      const aboutItem = findItem(template, "About Lidra");
       expect(aboutItem!.icon).toBeUndefined();
     });
 
@@ -683,7 +683,7 @@ describe("createTray - menu template inspection", () => {
       setPlatform("darwin");
       createTray();
       const template = getLastTemplate();
-      expect(findItem(template, "About Sidra")).toBeDefined();
+      expect(findItem(template, "About Lidra")).toBeDefined();
       expect(findItem(template, "Start Page")).toBeDefined();
       expect(findItem(template, "Notifications")).toBeDefined();
       expect(findItem(template, "Discord")).toBeDefined();
@@ -1243,19 +1243,19 @@ describe("createTray - menu template inspection", () => {
       vi.mocked(getCloseToTrayEnabled).mockReturnValue(true);
     });
 
-    it("shows Hide Sidra when window is visible", () => {
+    it("shows Hide Lidra when window is visible", () => {
       createTray();
       const template = getLastTemplate();
-      expect(findItem(template, "Hide Sidra")).toBeDefined();
-      expect(findItem(template, "Show Sidra")).toBeUndefined();
+      expect(findItem(template, "Hide Lidra")).toBeDefined();
+      expect(findItem(template, "Show Lidra")).toBeUndefined();
     });
 
-    it("shows Show Sidra when window is hidden", () => {
+    it("shows Show Lidra when window is hidden", () => {
       mockWin.isVisible.mockReturnValue(false);
       createTray();
       const template = getLastTemplate();
-      expect(findItem(template, "Show Sidra")).toBeDefined();
-      expect(findItem(template, "Hide Sidra")).toBeUndefined();
+      expect(findItem(template, "Show Lidra")).toBeDefined();
+      expect(findItem(template, "Hide Lidra")).toBeUndefined();
     });
 
     it("resolves a different icon for the Hide state and the Show state", () => {
@@ -1289,8 +1289,8 @@ describe("createTray - menu template inspection", () => {
       vi.mocked(getCloseToTrayEnabled).mockReturnValue(false);
       createTray();
       const template = getLastTemplate();
-      expect(findItem(template, "Hide Sidra")).toBeUndefined();
-      expect(findItem(template, "Show Sidra")).toBeUndefined();
+      expect(findItem(template, "Hide Lidra")).toBeUndefined();
+      expect(findItem(template, "Show Lidra")).toBeUndefined();
     });
 
     it("shows and focuses the window when disabling close-to-tray while hidden", () => {
@@ -1333,10 +1333,10 @@ describe("createTray - menu template inspection", () => {
       expect(clickCall).toBeDefined();
       (clickCall![1] as () => void)();
       expect(setContextMenu.mock.calls.length).toBe(before + 1);
-      // Without the rebuild the menu still offers Show Sidra for a window that is now visible.
+      // Without the rebuild the menu still offers Show Lidra for a window that is now visible.
       const template = getLastTemplate();
-      expect(findItem(template, "Hide Sidra")).toBeDefined();
-      expect(findItem(template, "Show Sidra")).toBeUndefined();
+      expect(findItem(template, "Hide Lidra")).toBeDefined();
+      expect(findItem(template, "Show Lidra")).toBeUndefined();
     });
 
     it("tray click focuses a visible window without rebuilding the menu", () => {
@@ -1864,7 +1864,7 @@ describe("theme change menu refresh", () => {
 
       expect(tray.setImage).toHaveBeenCalledTimes(1);
       expect(tray.setImage).toHaveBeenCalledWith(
-        `assets/icons/sidra-tray-${dark ? "dark" : "light"}.png`,
+        `assets/icons/lidra-tray-${dark ? "dark" : "light"}.png`,
       );
       expect(tray.setContextMenu).toHaveBeenCalledTimes(1);
     },
@@ -2287,7 +2287,7 @@ describe("initTrayStateManager", () => {
       vi.advanceTimersByTime(COALESCE_MS);
 
       const setToolTipFn = mockTray.setToolTip as ReturnType<typeof vi.fn>;
-      expect(setToolTipFn).toHaveBeenLastCalledWith("Sidra");
+      expect(setToolTipFn).toHaveBeenLastCalledWith("Lidra");
 
       template = getLastTemplate();
       const labels = template.map((item) => item.label);

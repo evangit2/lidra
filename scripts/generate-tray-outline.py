@@ -8,7 +8,7 @@ import xml.etree.ElementTree as ET
 source_dir = Path(__file__).resolve().parent.parent / "assets" / "source"
 namespace = "http://www.w3.org/2000/svg"
 ET.register_namespace("", namespace)
-symbol = ET.parse(source_dir / "sidra-tray-symbol.svg").getroot()
+symbol = ET.parse(source_dir / "lidra-tray-symbol.svg").getroot()
 outline = ET.Element(symbol.tag, symbol.attrib)
 definitions = ET.SubElement(outline, f"{{{namespace}}}defs")
 geometry = ET.SubElement(definitions, f"{{{namespace}}}g", id="tray-symbol")
@@ -27,5 +27,5 @@ ET.SubElement(outline, f"{{{namespace}}}use", {
 })
 ET.indent(outline)
 ET.ElementTree(outline).write(
-    source_dir / "sidra-tray-outline.svg", encoding="UTF-8", xml_declaration=True,
+    source_dir / "lidra-tray-outline.svg", encoding="UTF-8", xml_declaration=True,
 )

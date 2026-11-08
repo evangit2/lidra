@@ -16,7 +16,7 @@ const sourcePackage = JSON.parse(readFileSync("package.json", "utf8")) as typeof
 const directories: string[] = [];
 
 function fixture() {
-  const directory = mkdtempSync(path.join(tmpdir(), "sidra-appstream-"));
+  const directory = mkdtempSync(path.join(tmpdir(), "lidra-appstream-"));
   directories.push(directory);
   writeFileSync(path.join(directory, "package.json"), JSON.stringify(sourcePackage));
   return directory;
@@ -79,7 +79,7 @@ describe("AppStream metadata", () => {
     const xml = readFileSync(generateAppStream(directory), "utf8");
     expect(xml).toContain(`version="${sourcePackage.version}" date="2026-10-20" type="stable"`);
     expect(xml).toContain(`/releases/tag/${sourcePackage.version}</url>`);
-    expect(xml).toContain(`/raw/${sourcePackage.version}/assets/sidra-screenshot.png`);
+    expect(xml).toContain(`/raw/${sourcePackage.version}/assets/lidra-screenshot.png`);
     expect(xml).toContain("<name>Example Developer</name>");
     expect(xml).not.toContain("developer@example.com");
   });
@@ -91,7 +91,7 @@ describe("AppStream metadata", () => {
     const xml = readFileSync(generateAppStream(directory), "utf8");
     expect(xml).toContain(`version="${sourcePackage.version}" date="2026-10-18" type="development"`);
     expect(xml).not.toContain("/releases/tag/");
-    expect(xml).toContain(`/raw/${revision}/assets/sidra-screenshot.png`);
+    expect(xml).toContain(`/raw/${revision}/assets/lidra-screenshot.png`);
   });
 
   it("omits release history when a source archive has no Git metadata", () => {

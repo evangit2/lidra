@@ -103,7 +103,7 @@ describe("MusicKit queue context", () => {
       queue, nowPlayingItem: current,
     } });
     expect(latest(bridgeSend).items).toEqual([]);
-    await window.__sidra!.play();
+    await window.__lidra!.play();
     expect(musicKit.play).toHaveBeenCalledOnce();
     expect(bridgeSend).toHaveBeenCalledWith("hookReady", 1, 1);
   });
@@ -121,7 +121,7 @@ describe("MusicKit queue context", () => {
       Object.assign(musicKit, { nowPlayingItem: items[index] });
       musicKitListeners.get("nowPlayingItemDidChange")?.({ item: items[index] });
     });
-    await window.__sidra!.goTo(selected);
+    await window.__lidra!.goTo(selected);
     expect(musicKit.changeToMediaAtIndex).toHaveBeenCalledExactlyOnceWith(2);
     expect(musicKit.seekToTime).toHaveBeenCalledExactlyOnceWith(0);
     expect(musicKit.play).toHaveBeenCalledOnce();
@@ -135,7 +135,7 @@ describe("MusicKit queue context", () => {
     const { window, musicKit, bridgeSend } = createHarness({ musicKitOverrides: {
       queue: { items: [current], position: 0 }, nowPlayingItem: current,
     } });
-    await window.__sidra!.goTo(latest(bridgeSend).currentOccurrenceId);
+    await window.__lidra!.goTo(latest(bridgeSend).currentOccurrenceId);
     expect(musicKit.changeToMediaAtIndex).not.toHaveBeenCalled();
     expect(musicKit.seekToTime).toHaveBeenCalledWith(0);
     expect(musicKit.play).toHaveBeenCalledOnce();
@@ -146,7 +146,7 @@ describe("MusicKit queue context", () => {
     const { window, musicKit, bridgeSend } = createHarness({ musicKitOverrides: {
       queue: { items: [current], position: 0 }, nowPlayingItem: current,
     } });
-    await window.__sidra!.goTo(latest(bridgeSend).currentOccurrenceId);
+    await window.__lidra!.goTo(latest(bridgeSend).currentOccurrenceId);
     expect(musicKit.seekToTime).toHaveBeenCalledWith(0);
   });
 
@@ -155,7 +155,7 @@ describe("MusicKit queue context", () => {
     const { window, musicKit, bridgeSend } = createHarness({ musicKitOverrides: {
       queue: { items: [current], position: 0 }, nowPlayingItem: current,
     } });
-    await window.__sidra!.goTo(latest(bridgeSend).currentOccurrenceId);
+    await window.__lidra!.goTo(latest(bridgeSend).currentOccurrenceId);
     expect(musicKit.seekToTime).not.toHaveBeenCalled();
     expect(musicKit.play).toHaveBeenCalledOnce();
   });
@@ -167,11 +167,11 @@ describe("MusicKit queue context", () => {
     } });
     let resolveSeek!: () => void;
     musicKit.seekToTime.mockReturnValueOnce(new Promise<void>(resolve => { resolveSeek = resolve; }));
-    const stopped = window.__sidra!.stop(1);
+    const stopped = window.__lidra!.stop(1);
     await Promise.resolve();
     const selected = operation === "goTo"
-      ? window.__sidra!.goTo(latest(bridgeSend).currentOccurrenceId)
-      : window.__sidra!.openUri("https://music.apple.com/album/123");
+      ? window.__lidra!.goTo(latest(bridgeSend).currentOccurrenceId)
+      : window.__lidra!.openUri("https://music.apple.com/album/123");
     await new Promise<void>(resolve => setImmediate(resolve));
     expect(musicKit.seekToTime).toHaveBeenCalledOnce();
     expect(musicKit.play).not.toHaveBeenCalled();
@@ -193,7 +193,7 @@ describe("MusicKit queue context", () => {
     } });
     let resolveSeek!: () => void;
     musicKit.seekToTime.mockReturnValueOnce(new Promise<void>(resolve => { resolveSeek = resolve; }));
-    const task = window.__sidra!.goTo(latest(bridgeSend).currentOccurrenceId);
+    const task = window.__lidra!.goTo(latest(bridgeSend).currentOccurrenceId);
     await new Promise<void>(resolve => setImmediate(resolve));
     items.shift();
     resolveSeek();
@@ -206,7 +206,7 @@ describe("MusicKit queue context", () => {
     const { window, musicKit, bridgeSend } = createHarness({ musicKitOverrides: { queue: { items, position: 0 }, nowPlayingItem: items[0] } });
     const removed = latest(bridgeSend).items[1].occurrenceId;
     items.pop();
-    for (const id of [removed, "d1_i1_o999", "/unknown", null]) await window.__sidra!.goTo(id);
+    for (const id of [removed, "d1_i1_o999", "/unknown", null]) await window.__lidra!.goTo(id);
     expect(musicKit.changeToMediaAtIndex).not.toHaveBeenCalled();
     expect(musicKit.seekToTime).not.toHaveBeenCalled();
     expect(musicKit.play).not.toHaveBeenCalled();
@@ -216,7 +216,7 @@ describe("MusicKit queue context", () => {
   it("waits for the exact occurrence after SDK navigation resolves", async () => {
     const items = [item(0), item(1)];
     const { window, musicKit, musicKitListeners, bridgeSend } = createHarness({ musicKitOverrides: { queue: { items, position: 0 }, nowPlayingItem: items[0] } });
-    const task = window.__sidra!.goTo(latest(bridgeSend).items[1].occurrenceId);
+    const task = window.__lidra!.goTo(latest(bridgeSend).items[1].occurrenceId);
     await new Promise<void>(resolve => setImmediate(resolve));
     expect(musicKit.seekToTime).not.toHaveBeenCalled();
     Object.assign(musicKit, { nowPlayingItem: items[1] });
@@ -229,12 +229,12 @@ describe("MusicKit queue context", () => {
     const items = [item(0), item(1)];
     const harness = createHarness({ musicKitOverrides: { queue: { items, position: 0 }, nowPlayingItem: items[0] } });
     const { window, musicKit, musicKitListeners } = harness;
-    const task = window.__sidra!.goTo(latest(harness.bridgeSend).items[1].occurrenceId);
+    const task = window.__lidra!.goTo(latest(harness.bridgeSend).items[1].occurrenceId);
     await new Promise<void>(resolve => setImmediate(resolve));
     let command: unknown;
     if (action === "pagehide") harness.globalRegistrations.find(entry => entry.type === "pagehide")?.listener({});
     else if (action === "instance") { harness.replaceInstance(); harness.runMonitorCycles(1); }
-    else command = window.__sidra![action](action === "stop" ? 1 : 0);
+    else command = window.__lidra![action](action === "stop" ? 1 : 0);
     Object.assign(musicKit, { nowPlayingItem: items[1] });
     musicKitListeners.get("nowPlayingItemDidChange")?.({ item: items[1] });
     if (action === "instance") harness.runTimeouts();
@@ -248,11 +248,11 @@ describe("MusicKit queue context", () => {
     const { window, musicKit, musicKitListeners, bridgeSend, runTimeouts } = createHarness({ musicKitOverrides: { queue: { items, position: 0 }, nowPlayingItem: items[0] } });
     let resolveNavigation!: () => void;
     musicKit.changeToMediaAtIndex.mockReturnValueOnce(new Promise(resolve => { resolveNavigation = resolve; }));
-    const task = window.__sidra!.goTo(latest(bridgeSend).items[1].occurrenceId);
+    const task = window.__lidra!.goTo(latest(bridgeSend).items[1].occurrenceId);
     await new Promise<void>(resolve => setImmediate(resolve));
     runTimeouts();
     await task;
-    await window.__sidra!.openUri("https://music.apple.com/album/999");
+    await window.__lidra!.openUri("https://music.apple.com/album/999");
     expect(musicKit.setQueue).not.toHaveBeenCalled();
     Object.assign(musicKit, { nowPlayingItem: items[1] });
     musicKitListeners.get("nowPlayingItemDidChange")?.({ item: items[1] });
@@ -260,7 +260,7 @@ describe("MusicKit queue context", () => {
     await new Promise<void>(resolve => setImmediate(resolve));
     expect(musicKit.seekToTime).not.toHaveBeenCalled();
     expect(musicKit.play).not.toHaveBeenCalled();
-    await window.__sidra!.openUri("https://music.apple.com/album/1000");
+    await window.__lidra!.openUri("https://music.apple.com/album/1000");
     expect(musicKit.setQueue).toHaveBeenCalledOnce();
   });
 });
@@ -312,8 +312,8 @@ describe("MusicKit queue command ordering", () => {
     musicKit.seekToTime.mockImplementation(() => { events.push("seek"); });
     const snapshot = bridgeSend.mock.calls.find(([channel]) => channel === "queueDidChange")![1] as QueueSnapshot;
     const queueCommand = operation === "goTo"
-      ? window.__sidra!.goTo(snapshot.items[1].occurrenceId)
-      : window.__sidra!.openUri("https://music.apple.com/album/123");
+      ? window.__lidra!.goTo(snapshot.items[1].occurrenceId)
+      : window.__lidra!.openUri("https://music.apple.com/album/123");
     return { ...harness, items, events, queueCommand, resolveSdk, rejectSdk };
   }
 
@@ -323,7 +323,7 @@ describe("MusicKit queue command ordering", () => {
     const harness = pendingQueueHarness(operation);
     const { window, musicKit, items, events, queueCommand, resolveSdk } = harness;
     await new Promise<void>(resolve => setImmediate(resolve));
-    const command = window.__sidra![control](control === "stop" ? 1 : 42);
+    const command = window.__lidra![control](control === "stop" ? 1 : 42);
     await new Promise<void>(resolve => setImmediate(resolve));
     expect(events).toEqual([]);
 
@@ -343,7 +343,7 @@ describe("MusicKit queue command ordering", () => {
     await new Promise<void>(resolve => setImmediate(resolve));
     runTimeouts();
     await queueCommand;
-    const paused = window.__sidra!.pause();
+    const paused = window.__lidra!.pause();
     await new Promise<void>(resolve => setImmediate(resolve));
     expect(events).toEqual([]);
     resolveSdk();
@@ -355,7 +355,7 @@ describe("MusicKit queue command ordering", () => {
   it.each(["goTo", "openUri"] as const)("applies a queued control even when %s rejects", async operation => {
     const { window, events, queueCommand, rejectSdk } = pendingQueueHarness(operation);
     await new Promise<void>(resolve => setImmediate(resolve));
-    const paused = window.__sidra!.pause();
+    const paused = window.__lidra!.pause();
     rejectSdk(new Error("private SDK error"));
     await Promise.all([queueCommand, paused]);
     expect(events).toEqual(["pause"]);
@@ -364,7 +364,7 @@ describe("MusicKit queue command ordering", () => {
   it.each(["pagehide", "instance"])("drops waiting controls when the %s changes", async change => {
     const harness = pendingQueueHarness("goTo");
     await new Promise<void>(resolve => setImmediate(resolve));
-    const next = harness.window.__sidra!.next();
+    const next = harness.window.__lidra!.next();
     if (change === "pagehide") harness.globalRegistrations.find(entry => entry.type === "pagehide")?.listener({});
     else { harness.replaceInstance(); harness.runMonitorCycles(1); }
     harness.resolveSdk();
@@ -376,11 +376,11 @@ describe("MusicKit queue command ordering", () => {
     let resolveNext!: () => void;
     const { window, musicKit } = createHarness();
     musicKit.skipToNextItem.mockReturnValueOnce(new Promise<void>(resolve => { resolveNext = resolve; }));
-    const next = window.__sidra!.next();
+    const next = window.__lidra!.next();
     await new Promise<void>(resolve => setImmediate(resolve));
-    const previous = window.__sidra!.previous();
-    const paused = window.__sidra!.pause();
-    const opened = window.__sidra!.openUri("https://music.apple.com/album/123");
+    const previous = window.__lidra!.previous();
+    const paused = window.__lidra!.pause();
+    const opened = window.__lidra!.openUri("https://music.apple.com/album/123");
     await new Promise<void>(resolve => setImmediate(resolve));
     expect(musicKit.skipToPreviousItem).not.toHaveBeenCalled();
     expect(musicKit.pause).not.toHaveBeenCalled();
@@ -394,8 +394,8 @@ describe("MusicKit queue command ordering", () => {
   it.each(["play", "playPause"])("resumes with %s after Stop queued behind a late item change", async control => {
     const { window, events, queueCommand, resolveSdk } = pendingQueueHarness("goTo");
     await new Promise<void>(resolve => setImmediate(resolve));
-    const stopped = window.__sidra!.stop(1);
-    const resumed = window.__sidra![control]();
+    const stopped = window.__lidra!.stop(1);
+    const resumed = window.__lidra![control]();
     resolveSdk();
     await Promise.all([queueCommand, stopped, resumed]);
     expect(events).toEqual(["sdk-settled", "pause", "seek", "play"]);
@@ -403,8 +403,8 @@ describe("MusicKit queue command ordering", () => {
 
   it("lets Stop supersede a queued resume without waiting on itself", async () => {
     const { window, musicKit, bridgeSend } = createHarness();
-    const resumed = window.__sidra!.play();
-    const stopped = window.__sidra!.stop(1);
+    const resumed = window.__lidra!.play();
+    const stopped = window.__lidra!.stop(1);
     await Promise.all([resumed, stopped]);
     expect(musicKit.play).not.toHaveBeenCalled();
     expect(musicKit.pause).toHaveBeenCalledOnce();
@@ -420,23 +420,23 @@ describe("MusicKit queue command ordering", () => {
     } });
     let resolveNext!: () => void;
     musicKit.skipToNextItem.mockReturnValueOnce(new Promise<void>(resolve => { resolveNext = resolve; }));
-    const next = window.__sidra!.next();
+    const next = window.__lidra!.next();
     await new Promise<void>(resolve => setImmediate(resolve));
     const snapshot = bridgeSend.mock.calls.find(([channel]) => channel === "queueDidChange")![1] as QueueSnapshot;
     const queued = operation === "goTo"
-      ? window.__sidra!.goTo(snapshot.currentOccurrenceId)
-      : window.__sidra!.openUri("https://music.apple.com/album/123");
+      ? window.__lidra!.goTo(snapshot.currentOccurrenceId)
+      : window.__lidra!.openUri("https://music.apple.com/album/123");
     let stopCompleted = false;
     const stop = () => {
-      Promise.resolve(window.__sidra!.stop(1)).then(() => { stopCompleted = true; });
+      Promise.resolve(window.__lidra!.stop(1)).then(() => { stopCompleted = true; });
     };
     if (timing === "before SDK settlement") stop();
     else {
-      const instance = window.__sidraHookedMk;
+      const instance = window.__lidraHookedMk;
       let checked = false;
       // Re-enter Stop after valid() has sampled the request token, so cancellation
       // alone cannot protect the queue callback from awaiting its own successor.
-      Object.defineProperty(window, "__sidraHookedMk", { get() {
+      Object.defineProperty(window, "__lidraHookedMk", { get() {
         if (!checked) { checked = true; stop(); }
         return instance;
       } });
@@ -454,7 +454,7 @@ describe("MusicKit queue command ordering", () => {
     expect(musicKit.seekToTime).toHaveBeenCalledExactlyOnceWith(0);
     expect(musicKit.play).not.toHaveBeenCalled();
     expect(bridgeSend).toHaveBeenCalledWith("playbackStopped", { requestId: 1, success: true }, 1);
-    await window.__sidra!.play();
+    await window.__lidra!.play();
     expect(musicKit.play).toHaveBeenCalledOnce();
   });
 
@@ -474,7 +474,7 @@ describe("MusicKit queue command ordering", () => {
     const argument = control === "goTo" ? snapshot.items[0].occurrenceId
       : control === "openUri" ? "https://music.apple.com/album/123"
       : control === "stop" ? 1 : 42;
-    const command = window.__sidra![control](argument);
+    const command = window.__lidra![control](argument);
     if (timing === "before") {
       await new Promise<void>(resolve => setImmediate(resolve));
       expect(events).toEqual([]);
@@ -509,7 +509,7 @@ describe("MusicKit OpenUri", () => {
         origin: `https://${host}`,
       });
       const uri = `https://${host}/gb/album/123`;
-      await window.__sidra!.openUri(uri);
+      await window.__lidra!.openUri(uri);
       expect(musicKit.setQueue).toHaveBeenCalledExactlyOnceWith({
         url: uri,
         startPlaying: true,
@@ -527,7 +527,7 @@ describe("MusicKit OpenUri", () => {
     "https://user@music.apple.com/album/1",
   ])("rejects an invalid or wrong-service queue URL %#", async (uri) => {
     const { window, musicKit } = createHarness();
-    await window.__sidra!.openUri(uri);
+    await window.__lidra!.openUri(uri);
     expect(musicKit.setQueue).not.toHaveBeenCalled();
     expect(musicKit.play).not.toHaveBeenCalled();
   });
@@ -539,11 +539,11 @@ describe("MusicKit OpenUri", () => {
       const uri = "https://music.apple.com/album/private?token=secret";
       musicKit.setQueue.mockRejectedValueOnce(new Error(uri));
       const queue = musicKit.queue;
-      await expect(window.__sidra!.openUri(uri)).resolves.toBeUndefined();
+      await expect(window.__lidra!.openUri(uri)).resolves.toBeUndefined();
       expect(musicKit.play).not.toHaveBeenCalled();
       expect(musicKit.queue).toBe(queue);
       expect(warn).toHaveBeenCalledExactlyOnceWith(
-        "[Sidra] failed to open requested media",
+        "[Lidra] failed to open requested media",
       );
     } finally {
       warn.mockRestore();
@@ -562,7 +562,7 @@ describe("MusicKit OpenUri", () => {
     expect(
       window.addEventListener.mock.invocationCallOrder[listenerIndex],
     ).toBeLessThan(bridgeSend.mock.invocationCallOrder[readyIndex]);
-    expect(typeof window.__sidra!.openUri).toBe("function");
+    expect(typeof window.__lidra!.openUri).toBe("function");
   });
 
   it("serialises queue replacement and drops superseded waiting requests", async () => {
@@ -573,12 +573,12 @@ describe("MusicKit OpenUri", () => {
         resolveQueue = resolve;
       }),
     );
-    const first = window.__sidra!.openUri("https://music.apple.com/album/1");
+    const first = window.__lidra!.openUri("https://music.apple.com/album/1");
     await Promise.resolve();
-    const superseded = window.__sidra!.openUri(
+    const superseded = window.__lidra!.openUri(
       "https://music.apple.com/album/2",
     );
-    const latest = window.__sidra!.openUri("https://music.apple.com/album/3");
+    const latest = window.__lidra!.openUri("https://music.apple.com/album/3");
     expect(musicKit.setQueue).toHaveBeenCalledOnce();
     resolveQueue();
     await Promise.all([first, superseded, latest]);
@@ -602,27 +602,27 @@ describe("MusicKit OpenUri", () => {
             rejectQueue = reject;
           }),
         );
-        const first = window.__sidra!.openUri(
+        const first = window.__lidra!.openUri(
           "https://music.apple.com/album/1",
         );
         await Promise.resolve();
-        const queued = window.__sidra!.openUri(
+        const queued = window.__lidra!.openUri(
           "https://music.apple.com/album/2",
         );
         runTimeouts();
         await Promise.all([first, queued]);
-        await window.__sidra!.openUri("https://music.apple.com/album/3");
+        await window.__lidra!.openUri("https://music.apple.com/album/3");
         expect(musicKit.setQueue).toHaveBeenCalledOnce();
         expect(musicKit.play).not.toHaveBeenCalled();
         expect(warn.mock.calls).toEqual(
-          Array(3).fill(["[Sidra] failed to open requested media"]),
+          Array(3).fill(["[Lidra] failed to open requested media"]),
         );
 
         if (settlement === "resolve") resolveQueue();
         else rejectQueue(new Error("private request data"));
         await new Promise<void>((resolve) => setImmediate(resolve));
         expect(musicKit.setQueue).toHaveBeenCalledOnce();
-        await window.__sidra!.openUri("https://music.apple.com/album/4");
+        await window.__lidra!.openUri("https://music.apple.com/album/4");
         expect(musicKit.setQueue.mock.calls).toEqual([
           [{ url: "https://music.apple.com/album/1", startPlaying: true }],
           [{ url: "https://music.apple.com/album/4", startPlaying: true }],
@@ -630,7 +630,7 @@ describe("MusicKit OpenUri", () => {
         expect(musicKit.play).not.toHaveBeenCalled();
         expect(
           warn.mock.calls.every(
-            ([message]) => message === "[Sidra] failed to open requested media",
+            ([message]) => message === "[Lidra] failed to open requested media",
           ),
         ).toBe(true);
       } finally {
@@ -641,9 +641,9 @@ describe("MusicKit OpenUri", () => {
 
   it("clears a completed queue timeout before another request", async () => {
     const { window, musicKit, runTimeouts } = createHarness();
-    await window.__sidra!.openUri("https://music.apple.com/album/1");
+    await window.__lidra!.openUri("https://music.apple.com/album/1");
     runTimeouts();
-    await window.__sidra!.openUri("https://music.apple.com/album/2");
+    await window.__lidra!.openUri("https://music.apple.com/album/2");
     expect(musicKit.setQueue).toHaveBeenCalledTimes(2);
   });
 
@@ -663,9 +663,9 @@ describe("MusicKit OpenUri", () => {
           resolveQueue = resolve;
         }),
       );
-      const first = window.__sidra!.openUri("https://music.apple.com/album/1");
+      const first = window.__lidra!.openUri("https://music.apple.com/album/1");
       await Promise.resolve();
-      const queued = window.__sidra!.openUri("https://music.apple.com/album/2");
+      const queued = window.__lidra!.openUri("https://music.apple.com/album/2");
       if (change === "navigation") {
         globalRegistrations
           .find(({ type }) => type === "pagehide")
@@ -710,8 +710,8 @@ describe("MusicKit Stop", () => {
       const { window, bridgeSend, musicKit, resolveSeek, engineStop } =
         pendingSeekHarness();
       const queue = musicKit.queue;
-      const stopping = window.__sidra!.stop(1);
-      const playing = window.__sidra![command]();
+      const stopping = window.__lidra!.stop(1);
+      const playing = window.__lidra![command]();
       await Promise.resolve();
       expect(musicKit.pause).toHaveBeenCalledOnce();
       expect(musicKit.seekToTime).toHaveBeenCalledExactlyOnceWith(0);
@@ -740,12 +740,12 @@ describe("MusicKit Stop", () => {
 
   it("coalesces repeated Stop calls and does not rewind an already stopped item", async () => {
     const { window, musicKit, resolveSeek } = pendingSeekHarness();
-    const stopping = window.__sidra!.stop(1);
-    expect(window.__sidra!.stop(1)).toBe(stopping);
+    const stopping = window.__lidra!.stop(1);
+    expect(window.__lidra!.stop(1)).toBe(stopping);
     await Promise.resolve();
     resolveSeek();
     await stopping;
-    await window.__sidra!.stop(2);
+    await window.__lidra!.stop(2);
     expect(musicKit.pause).toHaveBeenCalledOnce();
     expect(musicKit.seekToTime).toHaveBeenCalledOnce();
   });
@@ -755,10 +755,10 @@ describe("MusicKit Stop", () => {
     async (command) => {
       const { window, bridgeSend, musicKit, resolveSeek } =
         pendingSeekHarness();
-      const stopping = window.__sidra!.stop(1);
-      const playing = window.__sidra![command]();
+      const stopping = window.__lidra!.stop(1);
+      const playing = window.__lidra![command]();
       await Promise.resolve();
-      window.__sidra!.pause();
+      window.__lidra!.pause();
       resolveSeek();
       await Promise.all([stopping, playing]);
       expect(musicKit.play).not.toHaveBeenCalled();
@@ -767,9 +767,9 @@ describe("MusicKit Stop", () => {
         { requestId: 1, success: true },
         1,
       );
-      await window.__sidra!.stop(2);
+      await window.__lidra!.stop(2);
       expect(musicKit.seekToTime).toHaveBeenCalledOnce();
-      await window.__sidra!.play();
+      await window.__lidra!.play();
       expect(musicKit.play).toHaveBeenCalledOnce();
     },
   );
@@ -784,7 +784,7 @@ describe("MusicKit Stop", () => {
         globalRegistrations,
         resolveSeek,
       } = pendingSeekHarness();
-      const stopping = window.__sidra!.stop(1);
+      const stopping = window.__lidra!.stop(1);
       resolveSeek();
       await stopping;
       if (change === "item")
@@ -801,7 +801,7 @@ describe("MusicKit Stop", () => {
           .find(({ type }) => type === "pageshow")
           ?.listener({});
       }
-      await window.__sidra!.stop(2);
+      await window.__lidra!.stop(2);
       expect(musicKit.pause).toHaveBeenCalledTimes(2);
       expect(musicKit.seekToTime).toHaveBeenCalledTimes(2);
     },
@@ -809,8 +809,8 @@ describe("MusicKit Stop", () => {
 
   it("reports seek failure and releases a waiting Play", async () => {
     const { window, bridgeSend, musicKit, rejectSeek } = pendingSeekHarness();
-    const stopping = window.__sidra!.stop(1);
-    const playing = window.__sidra!.play();
+    const stopping = window.__lidra!.stop(1);
+    const playing = window.__lidra!.play();
     await Promise.resolve();
     rejectSeek(new Error("seek failed"));
     await Promise.all([stopping, playing]);
@@ -825,8 +825,8 @@ describe("MusicKit Stop", () => {
   it("releases a waiting Play when the seek never settles and ignores late completion", async () => {
     const { window, bridgeSend, musicKit, runTimeouts, resolveSeek } =
       pendingSeekHarness();
-    const stopping = window.__sidra!.stop(1);
-    const playing = window.__sidra!.play();
+    const stopping = window.__lidra!.stop(1);
+    const playing = window.__lidra!.play();
     await Promise.resolve();
     runTimeouts();
     await Promise.all([stopping, playing]);
@@ -855,8 +855,8 @@ describe("MusicKit Stop", () => {
         runMonitorCycles,
         resolveSeek,
       } = pendingSeekHarness();
-      const stopping = window.__sidra!.stop(1);
-      const playing = window.__sidra!.play();
+      const stopping = window.__lidra!.stop(1);
+      const playing = window.__lidra!.play();
       await Promise.resolve();
       if (change === "item") {
         musicKitListeners.get("nowPlayingItemDidChange")?.({
@@ -898,7 +898,7 @@ describe("MusicKit Stop", () => {
           currentPlaybackDuration: duration,
         },
       });
-      await window.__sidra!.stop(1);
+      await window.__lidra!.stop(1);
       expect(musicKit.pause).toHaveBeenCalledOnce();
       expect(musicKit.seekToTime).not.toHaveBeenCalled();
       expect(bridgeSend).toHaveBeenCalledWith(
@@ -911,8 +911,8 @@ describe("MusicKit Stop", () => {
 
   it("keeps the position for ordinary Pause followed by Play", async () => {
     const { window, musicKit } = createHarness();
-    window.__sidra!.pause();
-    await window.__sidra!.play();
+    window.__lidra!.pause();
+    await window.__lidra!.play();
     expect(musicKit.pause).toHaveBeenCalledOnce();
     expect(musicKit.play).toHaveBeenCalledOnce();
     expect(musicKit.seekToTime).not.toHaveBeenCalled();
@@ -1324,7 +1324,7 @@ describe("musicKitHook", () => {
     });
 
     const event = {
-      data: { type: "sidra:command", channel: "player:next", args: [] },
+      data: { type: "lidra:command", channel: "player:next", args: [] },
       source: window,
     };
     for (const listener of messageListeners) listener(event);
@@ -1349,14 +1349,14 @@ describe("musicKitHook", () => {
 
   it("keeps polling and attaches after getInstance() throws on the first poll", () => {
     // window.MusicKit exists at the first poll, but getInstance() still throws.
-    // The poll must survive that lookup, because __sidraHookInjected blocks
+    // The poll must survive that lookup, because __lidraHookInjected blocks
     // re-injection and a cleared poll would leave native controls dead.
     const { bridgeSend, musicKit, musicKitListeners, window } = createHarness({
       musicKitThrowsAtFirstPoll: true,
     });
 
     expect(musicKitListeners.has("playbackStateDidChange")).toBe(true);
-    expect(window.__sidraHookedMk).toBe(musicKit);
+    expect(window.__lidraHookedMk).toBe(musicKit);
     expect(bridgeSend).toHaveBeenCalledWith("hookReady", 1, 1);
   });
 
@@ -1370,7 +1370,7 @@ describe("musicKitHook", () => {
     expect(messageListeners).toHaveLength(1);
   });
 
-  // Claim __sidraHookedMk before attachment can throw.
+  // Claim __lidraHookedMk before attachment can throw.
   // Otherwise the 5-second monitor sees a stale marker and adds another set of listeners on every cycle.
   it("attaches each MusicKit listener once when the IPC bridge is missing", () => {
     const { musicKit, runMonitorCycles } = createHarness({
@@ -1397,19 +1397,19 @@ describe("musicKitHook", () => {
   it("marks the instance as hooked even when the attach throws part way", () => {
     const { musicKit, window } = createHarness({ volumeThrows: true });
 
-    expect(window.__sidraHookedMk).toBe(musicKit);
+    expect(window.__lidraHookedMk).toBe(musicKit);
   });
 
   it("drops a player command quietly when the initial attach threw", () => {
     // attachSafely() contains the failure and installs the message listener
-    // anyway, so the listener is live with no window.__sidra behind it. An
+    // anyway, so the listener is live with no window.__lidra behind it. An
     // unguarded index on undefined throws a TypeError out of the listener.
     const { messageListeners, window } = createHarness({ volumeThrows: true });
 
-    expect(window.__sidra).toBeUndefined();
+    expect(window.__lidra).toBeUndefined();
 
     const event = {
-      data: { type: "sidra:command", channel: "player:next", args: [] },
+      data: { type: "lidra:command", channel: "player:next", args: [] },
       source: window,
     };
 

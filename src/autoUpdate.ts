@@ -21,8 +21,8 @@ function loadAutoUpdater(): typeof import("electron-updater") {
  * app-update.yml ships in all packaged builds, so its presence cannot determine support.
  */
 export function isAutoUpdateSupported(): boolean {
-  if (process.env.SIDRA_DISABLE_AUTO_UPDATE === "1") {
-    autoUpdateLog.info("auto-update disabled via SIDRA_DISABLE_AUTO_UPDATE");
+  if (process.env.LIDRA_DISABLE_AUTO_UPDATE === "1") {
+    autoUpdateLog.info("auto-update disabled via LIDRA_DISABLE_AUTO_UPDATE");
     return false;
   }
 
@@ -80,7 +80,7 @@ export async function configureAutoUpdate(
   autoUpdater.autoDownload = true;
 
   // Windows builds are unsigned, so the signature check would reject every
-  // update Sidra publishes. The property takes a verifier function, and its
+  // update Lidra publishes. The property takes a verifier function, and its
   // setter ignores any falsy value, so the check is turned off by supplying one
   // that always passes rather than by assigning false. The instanceof narrows
   // to the only updater that carries the property, and electron-updater builds

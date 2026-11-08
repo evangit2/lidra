@@ -1,5 +1,5 @@
 // Shared contract for assets/musicKitHook.js and src/preload.ts. The hook defines
-// window.__sidra, window.__sidraHookInjected, and window.__sidraHookedMk. The
+// window.__lidra, window.__lidraHookInjected, and window.__lidraHookedMk. The
 // preload exposes window.AMWrapper. TypeScript checks the preload allowlists
 // against these unions. Contract tests read the JavaScript hook because
 // TypeScript does not check that file.
@@ -54,10 +54,10 @@ type ReceiveChannel =
 // ---------------------------------------------------------------------------
 
 /**
- * Commands exposed on window.__sidra by assets/musicKitHook.js.
+ * Commands exposed on window.__lidra by assets/musicKitHook.js.
  * Contract tests compare the hook command table with this interface.
  */
-interface SidraHook {
+interface LidraHook {
  /** Starts the identified live queue occurrence at its beginning. */
  goTo(occurrenceId: string): Promise<void>;
  /** Replaces the queue with the supplied URL and starts playback. */
@@ -100,10 +100,10 @@ interface AMWrapperBridge {
 /**
  * Command payload that the isolated preload sends to the main-world hook.
  * `window.postMessage()` crosses the context isolation boundary that prevents
- * the preload from calling `window.__sidra` directly.
+ * the preload from calling `window.__lidra` directly.
  */
-interface SidraCommandMessage {
- type: "sidra:command";
+interface LidraCommandMessage {
+ type: "lidra:command";
  channel: ReceiveChannel;
  args?: unknown[];
 }
@@ -115,18 +115,18 @@ interface SidraCommandMessage {
 /** Hook state and the isolated preload bridge exposed to the main world. */
 interface Window {
  /** The command surface, assigned last so a partial attachment leaves it unset. */
- __sidra: SidraHook;
+ __lidra: LidraHook;
  /**
   * Set once at the top of the hook's IIFE and never cleared. It prevents a
   * second injection from installing duplicate document listeners and timers.
   */
- __sidraHookInjected: boolean;
+ __lidraHookInjected: boolean;
  /**
   * The MusicKit instance that the hook uses. This marker is separate from the
   * injection guard because the monitor compares it with the current singleton
   * to detect a replacement and attach again.
   */
- __sidraHookedMk: unknown;
+ __lidraHookedMk: unknown;
  /** IPC bridge exposed by src/preload.ts, not by the hook. */
  AMWrapper: AMWrapperBridge;
 }

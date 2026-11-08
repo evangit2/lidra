@@ -2,7 +2,7 @@
 (() => {
   'use strict';
 
-  const bridge = window.sidraSettings;
+  const bridge = window.lidraSettings;
   const byId = (id) => document.getElementById(id);
   const params = new URLSearchParams(window.location.search);
   const lang = params.get('lang') || 'en';

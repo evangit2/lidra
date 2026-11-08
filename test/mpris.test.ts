@@ -272,14 +272,14 @@ afterEach(() => {
 
 describe("MPRIS desktop identity", () => {
   it.each([
-    [undefined, "sidra"],
-    ["world.wimpys.sidra", "world.wimpys.sidra"],
+    [undefined, "lidra"],
+    ["io.github.evangit2.lidra", "io.github.evangit2.lidra"],
   ])("uses the desktop entry for FLATPAK_ID=%s", (flatpakId, desktopId) => {
     vi.stubEnv("FLATPAK_ID", flatpakId);
     const { root } = initInterfaces();
     expect(root.DesktopEntry).toBe(desktopId);
     expect(busStub.requestName).toHaveBeenCalledWith(
-      "org.mpris.MediaPlayer2.sidra",
+      "org.mpris.MediaPlayer2.lidra",
       expect.any(Number),
     );
   });
@@ -683,7 +683,7 @@ const COMMAND_CASES: ReadonlyArray<{
     args: [7.25],
     invoke: (iface) => {
       player.emitNowPlaying({ trackId: "track-1" });
-      iface.SetPosition("/org/sidra/track/track_1", 7_250_000n);
+      iface.SetPosition("/org/lidra/track/track_1", 7_250_000n);
     },
   },
 ];
@@ -831,7 +831,7 @@ describe("MPRIS command provenance", () => {
     const rejectedTrackId = "private-track-rejected";
     player.emitNowPlaying({ trackId: acceptedTrackId });
 
-    iface.SetPosition("/org/sidra/track/private_track_accepted", 12_345_678n);
+    iface.SetPosition("/org/lidra/track/private_track_accepted", 12_345_678n);
 
     expect(winContents.send).toHaveBeenCalledWith("player:seek", 12.345678);
     expect(mprisLogText()).toContain(
@@ -920,7 +920,7 @@ describe("MPRIS controls through the MusicKit hook", () => {
     };
     musicKit.changeToMediaAtIndex.mockImplementation(async index => select(index));
     winContents.send.mockImplementation((channel: string, ...args: unknown[]) =>
-      window.__sidra![channel.slice("player:".length)](...args));
+      window.__lidra![channel.slice("player:".length)](...args));
     const interfaces = initInterfaces(undefined, sourcePlayer);
     return { ...harness, ...interfaces, sourcePlayer, items, select };
   }
@@ -1158,7 +1158,7 @@ describe("MPRIS playback capabilities", () => {
     const iface = initPlayerInterface();
     iface.Seek(1_000_000n);
     player.emitNowPlaying({ trackId: "track-1", durationInMillis: 10_000 });
-    iface.SetPosition("/org/sidra/track/track_1", 1_000_000n);
+    iface.SetPosition("/org/lidra/track/track_1", 1_000_000n);
     expect(winContents.send).not.toHaveBeenCalled();
     player.handlePlaybackCapabilitiesDidChange({
       canPlay: true,
@@ -1166,7 +1166,7 @@ describe("MPRIS playback capabilities", () => {
       canSeek: null,
       durationUs: null,
     });
-    iface.SetPosition("/org/sidra/track/track_1", 1_000_000n);
+    iface.SetPosition("/org/lidra/track/track_1", 1_000_000n);
     expect(winContents.send).toHaveBeenCalledExactlyOnceWith("player:seek", 1);
   });
 
@@ -1184,7 +1184,7 @@ describe("MPRIS playback capabilities", () => {
       durationUs: 10_000_000,
     });
     expect(iface.Metadata["mpris:length"].value).toBe(10_000_000);
-    iface.SetPosition("/org/sidra/track/radio", 10_000_001n);
+    iface.SetPosition("/org/lidra/track/radio", 10_000_001n);
     iface.Seek(10_000_001n);
     expect(winContents.send).toHaveBeenCalledExactlyOnceWith("player:next");
     player.handlePlaybackCapabilitiesDidChange({
@@ -1203,7 +1203,7 @@ describe("MPRIS playback capabilities", () => {
 });
 
 describe("MPRIS seek bounds", () => {
-  const trackId = "/org/sidra/track/track_1";
+  const trackId = "/org/lidra/track/track_1";
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -1671,7 +1671,7 @@ describe("MPRIS metadata", () => {
     player.emitNowPlaying(FULL_TRACK);
 
     expect(flatten(iface.Metadata)).toEqual({
-      "mpris:trackid": ["o", "/org/sidra/track/1440857781"],
+      "mpris:trackid": ["o", "/org/lidra/track/1440857781"],
       "mpris:length": ["x", 449_000_000],
       "xesam:title": ["s", "Blue Monday"],
       "xesam:artist": ["as", ["New Order"]],
@@ -1708,7 +1708,7 @@ describe("MPRIS metadata", () => {
     player.emitNowPlaying({ trackId: "1440857781", name: "Blue Monday" });
 
     expect(flatten(iface.Metadata)).toEqual({
-      "mpris:trackid": ["o", "/org/sidra/track/1440857781"],
+      "mpris:trackid": ["o", "/org/lidra/track/1440857781"],
       "xesam:title": ["s", "Blue Monday"],
     });
   });
@@ -1819,7 +1819,7 @@ describe("MPRIS radio song metadata", () => {
       vi.advanceTimersByTime(250);
 
       expect(iface.Metadata).toMatchObject({
-        "mpris:trackid": { signature: "o", value: "/org/sidra/track/ra_123" },
+        "mpris:trackid": { signature: "o", value: "/org/lidra/track/ra_123" },
         "xesam:title": { signature: "s", value: "Song" },
         "xesam:artist": { signature: "as", value: ["Artist"] },
         "xesam:album": { signature: "s", value: "Album" },

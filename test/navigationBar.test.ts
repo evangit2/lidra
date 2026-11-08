@@ -92,7 +92,7 @@ function createHarness({ withAnchor = true }: { withAnchor?: boolean } = {}) {
   return {
     anchor,
     bar: (): StubElement | null =>
-      root.descendants().find((element) => element.id === 'sidra-nav-buttons') ?? null,
+      root.descendants().find((element) => element.id === 'lidra-nav-buttons') ?? null,
     buttons: (): StubElement[] =>
       root.descendants().filter((element) => element.tagName === 'button'),
     root,
@@ -142,7 +142,7 @@ describe('navigationBar', () => {
 
     run();
 
-    expect(warn).toHaveBeenCalledWith(`Sidra: ${ANCHOR_SELECTOR} not found`);
+    expect(warn).toHaveBeenCalledWith(`Lidra: ${ANCHOR_SELECTOR} not found`);
   });
 
   it('appends no duplicate buttons when the script runs again', () => {

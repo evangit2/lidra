@@ -3,7 +3,7 @@
 
 import { CONTENT_READY_SELECTOR } from "./contentReady";
 
-/** The two Apple web services Sidra wraps. */
+/** The two Apple web services Lidra wraps. */
 export type MusicServiceId = "music" | "classical";
 
 /** One start page choice: the id persisted in config, and its path under the storefront. */
@@ -12,7 +12,7 @@ export interface StartPage<PageId extends string = string> {
   path: string;
 }
 
-/** A wrapped web service and everything Sidra needs to address and drive it. */
+/** A wrapped web service and everything Lidra needs to address and drive it. */
 export interface MusicService<PageId extends string = string> {
   id: MusicServiceId;
   host: string;

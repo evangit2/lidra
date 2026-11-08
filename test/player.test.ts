@@ -29,7 +29,7 @@ const HOOK_SOURCE = fs.readFileSync(
   'utf-8',
 );
 
-// The numbers are MusicKit's, not Sidra's, so each one is pinned rather than
+// The numbers are MusicKit's, not Lidra's, so each one is pinned rather than
 // left to whatever the enum happens to declare.
 describe('PlaybackState', () => {
   const STATE_VALUES: ReadonlyArray<readonly [keyof typeof PlaybackState, number]> = [
@@ -758,9 +758,9 @@ describe('Player handle* payload validation', () => {
   });
 });
 
-describe('SidraHook contract', () => {
-  it('keyof SidraHook matches the expected command method names', () => {
-    type HookKeys = keyof SidraHook;
+describe('LidraHook contract', () => {
+  it('keyof LidraHook matches the expected command method names', () => {
+    type HookKeys = keyof LidraHook;
     type ExpectedKeys =
       | 'goTo'
       | 'play'
@@ -783,8 +783,8 @@ describe('SidraHook contract', () => {
     expectTypeOf<IpcKeys>().toEqualTypeOf<'send'>();
   });
 
-  it('COMMANDS in musicKitHook.js matches keyof SidraHook', () => {
-    // Exhaustive over SidraHook: renaming, adding or removing a method in
+  it('COMMANDS in musicKitHook.js matches keyof LidraHook', () => {
+    // Exhaustive over LidraHook: renaming, adding or removing a method in
     // src/types/hook.d.ts without changing this list is a compile error.
     const hookMethods = {
       goTo: true,
@@ -799,7 +799,7 @@ describe('SidraHook contract', () => {
       setVolume: true,
       setRepeat: true,
       setShuffle: true,
-    } satisfies Record<keyof SidraHook, true>;
+    } satisfies Record<keyof LidraHook, true>;
 
     // Read the shipped hook rather than a parallel constant, so the two can
     // never drift apart unnoticed.
@@ -879,11 +879,11 @@ describe('Channel contract', () => {
     expectTypeOf<ReceiveChannel>().toEqualTypeOf<ExpectedReceive>();
   });
 
-  it('SidraCommandMessage has the expected shape', () => {
-    type MsgType = SidraCommandMessage['type'];
-    type MsgChannel = SidraCommandMessage['channel'];
+  it('LidraCommandMessage has the expected shape', () => {
+    type MsgType = LidraCommandMessage['type'];
+    type MsgChannel = LidraCommandMessage['channel'];
 
-    expectTypeOf<MsgType>().toEqualTypeOf<'sidra:command'>();
+    expectTypeOf<MsgType>().toEqualTypeOf<'lidra:command'>();
     expectTypeOf<MsgChannel>().toEqualTypeOf<ReceiveChannel>();
   });
 });
@@ -956,7 +956,7 @@ describe('getShareUrl', () => {
   });
 
   // An unexpected host names no service, and guessing an origin from it would
-  // build a URL for a host Sidra does not know.
+  // build a URL for a host Lidra does not know.
   it('falls back to the persisted service when the payload host is unknown', () => {
     expect(
       getShareUrl({ sourceHost: 'beta.music.apple.com', playParams: { catalogId: '42' } }),

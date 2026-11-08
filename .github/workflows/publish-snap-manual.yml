@@ -40,8 +40,8 @@ jobs:
       - name: Compile TypeScript 🛠️
         run: npm run build
         env:
-          SIDRA_LASTFM_API_KEY: ${{ secrets.SIDRA_LASTFM_API_KEY }}
-          SIDRA_LASTFM_API_SECRET: ${{ secrets.SIDRA_LASTFM_API_SECRET }}
+          LIDRA_LASTFM_API_KEY: ${{ secrets.LIDRA_LASTFM_API_KEY }}
+          LIDRA_LASTFM_API_SECRET: ${{ secrets.LIDRA_LASTFM_API_SECRET }}
       - name: Build Snap 🏗️
         run: |
           node scripts/patch-snap-desktop.cjs
@@ -51,7 +51,7 @@ jobs:
       - name: Upload Artefacts 📤
         uses: actions/upload-artifact@v7
         with:
-          name: sidra-snap-manual
+          name: lidra-snap-manual
           path: release/*.snap
           retention-days: 7
       - name: Locate Snap File 🔍
@@ -82,7 +82,7 @@ jobs:
       - name: Release Snap to Stable 🚀
         run: snapcraft release "$SNAP_NAME" "$SNAP_REVISION" "$SNAP_CHANNEL"
         env:
-          SNAP_NAME: sidra
+          SNAP_NAME: lidra
           SNAP_REVISION: ${{ steps.upload.outputs.revision }}
           SNAP_CHANNEL: stable
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
@@ -93,5 +93,5 @@ jobs:
             snapcraft revisions "$SNAP_NAME" --arch "$arch"
           done
         env:
-          SNAP_NAME: sidra
+          SNAP_NAME: lidra
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}

@@ -1086,7 +1086,7 @@ describe('fastPlaylistQueue', () => {
       const fake = fakeMusicKit(tracks);
       runScript(fake.mk, `/eg/library/playlist/${PLAYLIST}`, { indexedDB: db.api });
       await settle();
-      expect(db.open).toHaveBeenCalledWith('sidra-fast-queue', 3);
+      expect(db.open).toHaveBeenCalledWith('lidra-fast-queue', 3);
       expect(db.deleted).toEqual(['playlists', 'songs']);
       expect(db.created).toEqual(['meta', 'lists']);
     });
@@ -1375,7 +1375,7 @@ describe('fastPlaylistQueue', () => {
       void fake.mk.unauthorize();
       await settle(5000);
       expect(own.meta.size).toBe(1);
-      expect(warn).toHaveBeenCalledWith('[Sidra] failed to delete saved playlist tracks');
+      expect(warn).toHaveBeenCalledWith('[Lidra] failed to delete saved playlist tracks');
       expect(mk).toBeDefined();
     });
 

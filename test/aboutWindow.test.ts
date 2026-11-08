@@ -5,7 +5,7 @@ vi.mock("../src/config", () => ({
 }));
 
 vi.mock("../src/i18n", () => ({
-  getTrayStrings: () => ({ about: "About Sidra" }),
+  getTrayStrings: () => ({ about: "About Lidra" }),
   getAboutStrings: () => ({
     description: "Un client Apple Music minimaliste.",
     close: "Close",
@@ -134,7 +134,7 @@ describe("showAboutWindow", () => {
           lang: "fr",
           author: "Test",
           license: "MIT",
-          about: "About Sidra",
+          about: "About Lidra",
           close: "Close",
           versionPrefix: "Version",
           copyrightSuffix: "All rights reserved",

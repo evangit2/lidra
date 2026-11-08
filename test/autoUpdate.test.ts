@@ -72,7 +72,7 @@ describe('auto-update', () => {
     vi.mocked(dialog.showMessageBox).mockResolvedValue({ response: 1, checkboxChecked: false });
     vi.stubEnv('APPIMAGE', '');
     vi.stubEnv('SNAP', '');
-    vi.stubEnv('SIDRA_DISABLE_AUTO_UPDATE', '');
+    vi.stubEnv('LIDRA_DISABLE_AUTO_UPDATE', '');
     Object.defineProperty(app, 'isPackaged', { value: false, configurable: true, writable: true });
   });
 
@@ -85,10 +85,10 @@ describe('auto-update', () => {
 
   it('supports AppImage and packaged Windows installs only', () => {
     setPlatform('linux');
-    vi.stubEnv('APPIMAGE', '/tmp/Sidra.AppImage');
+    vi.stubEnv('APPIMAGE', '/tmp/Lidra.AppImage');
     expect(isAutoUpdateSupported()).toBe(true);
 
-    vi.stubEnv('SNAP', '/snap/sidra/current');
+    vi.stubEnv('SNAP', '/snap/lidra/current');
     expect(isAutoUpdateSupported()).toBe(false);
 
     vi.stubEnv('APPIMAGE', '');
@@ -103,11 +103,11 @@ describe('auto-update', () => {
 
   it('respects the environment and config disable switches', () => {
     setPlatform('linux');
-    vi.stubEnv('APPIMAGE', '/tmp/Sidra.AppImage');
-    vi.stubEnv('SIDRA_DISABLE_AUTO_UPDATE', '1');
+    vi.stubEnv('APPIMAGE', '/tmp/Lidra.AppImage');
+    vi.stubEnv('LIDRA_DISABLE_AUTO_UPDATE', '1');
     expect(isAutoUpdateSupported()).toBe(false);
 
-    vi.stubEnv('SIDRA_DISABLE_AUTO_UPDATE', '');
+    vi.stubEnv('LIDRA_DISABLE_AUTO_UPDATE', '');
     vi.mocked(getAutoUpdateEnabled).mockReturnValue(false);
     expect(isAutoUpdateSupported()).toBe(false);
   });

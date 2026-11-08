@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 
 root = Path(__file__).resolve().parent.parent
-source = root / "assets/source/sidra-icon-squircle.svg"
+source = root / "assets/source/lidra-icon-squircle.svg"
 output = root / "build"
 linux_output = output / "icons"
 sizes = (16, 24, 32, 48, 64, 128, 256, 512, 1024)
@@ -80,11 +80,11 @@ with tempfile.TemporaryDirectory(prefix="app-icons-", dir=output) as temporary:
         directory + b"".join(images[size] for size in ico_sizes)
     )
     (staging / "icon.png").write_bytes(images[1024])
-    (staging / "sidra-logo.png").write_bytes(images[256])
+    (staging / "lidra-logo.png").write_bytes(images[256])
 
     for name in ("icon.png", "icon.icns", "icon.ico"):
         (staging / name).replace(output / name)
-    (staging / "sidra-logo.png").replace(root / "assets/sidra-logo.png")
+    (staging / "lidra-logo.png").replace(root / "assets/lidra-logo.png")
 
     # electron-builder packages every PNG in build/icons as a hicolor icon.
     # Remove unwanted sizes so stale files cannot remain in a later package.
