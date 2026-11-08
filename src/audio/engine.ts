@@ -38,6 +38,9 @@ export interface AudioEngineOptions {
   /** `key` decrypts locally; `wrapper` uses a decrypt socket. */
   decryptMode?: "key" | "wrapper";
   decryptorService?: string;
+  /** Live addresses: the wrapper moves to a free port pair when one is taken. */
+  decryptorAddress?: () => string;
+  manifestAddress?: () => string;
   manifestService?: string;
   /** Restart the wrapper so it re-derives the song's key context. */
   restartDecryptor?: () => Promise<void>;
@@ -183,7 +186,9 @@ export class AudioEngine {
         ffmpegPath: this.options.ffmpegPath,
         decryptMode: this.options.decryptMode,
         decryptorService: this.options.decryptorService,
+        decryptorAddress: this.options.decryptorAddress,
         manifestService: this.options.manifestService,
+        manifestAddress: this.options.manifestAddress,
         restartDecryptor: this.options.restartDecryptor,
         webPlayback: this.options.webPlayback,
         spatial: this.options.getSpatial?.() ?? "bed",

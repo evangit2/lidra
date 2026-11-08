@@ -55,6 +55,13 @@ export interface PipelineOptions {
   decryptMode?: "key" | "wrapper";
   /** Wrapper decrypt socket address, used when `decryptMode` is `wrapper`. */
   decryptorService?: string;
+  /**
+   * Live wrapper address. The service is free to move to a free port pair when a
+   * previous run's process still owns the configured one, so read it per track.
+   */
+  decryptorAddress?: () => string;
+  /** Live wrapper manifest address, read per track for the same reason. */
+  manifestAddress?: () => string;
   /** Wrapper manifest socket address; overrides the API's manifest when set. */
   manifestService?: string;
   /**
@@ -221,7 +228,7 @@ export class TrackPipeline {
    */
   /** Resolve the master playlist, preferring the wrapper manifest when configured. */
   private async masterManifest(): Promise<{ text: string; baseUrl: string }> {
-    const service = this.options.manifestService?.trim();
+    const service = (this.options.manifestAddress?.() ?? this.options.manifestService ?? "").trim();
     if (service) {
       try {
         const url = await fetchDeviceManifest(this.asset.id, service);
@@ -233,6 +240,11 @@ export class TrackPipeline {
       }
     }
     return { text: await fetchText(this.asset.manifestUrl), baseUrl: this.asset.manifestUrl };
+  }
+
+  /** Address of the decryptor to talk to for this track. */
+  private decryptorService(): string {
+    return (this.options.decryptorAddress?.() ?? this.options.decryptorService ?? "").trim();
   }
 
   async prepare(): Promise<PreparedTrack> {
@@ -254,10 +266,10 @@ export class TrackPipeline {
     }
 
     if (this.effectiveMode === "wrapper") {
-      const open = await socketOpen(this.options.decryptorService);
+      const open = await socketOpen(this.decryptorService());
       if (!open) {
         pipelineLog.warn(
-          `wrapper is not answering on ${this.options.decryptorService ?? "?"}; using the key source for this track`,
+          `wrapper is not answering on ${this.decryptorService() || "?"}; using the key source for this track`,
         );
         this.effectiveMode = "key";
       }
@@ -420,7 +432,7 @@ export class TrackPipeline {
     info: Parameters<typeof decryptSegment>[2],
   ): Promise<Buffer> {
     if (this.effectiveMode === "wrapper") {
-      const service = this.options.decryptorService?.trim();
+      const service = this.decryptorService();
       if (!service) throw new Error("wrapper decrypt mode needs a decryptor service address");
       const request = {
         adamId: this.asset.id,

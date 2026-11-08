@@ -4,6 +4,7 @@ import {
   dialog,
   ipcMain,
   Menu,
+  safeStorage,
   session,
   Tray,
   webFrameMain,
@@ -78,7 +79,7 @@ import { CredentialStore } from "./audio/tokens";
 import { KeyCache, createKeyProvider } from "./audio/keys";
 import { createWidevineProvider } from "./audio/widevine/provider";
 import { webPlaybackMaster } from "./audio/webplayback";
-import { WrapperService } from "./audio/wrapper/service";
+import { WrapperService, isListening } from "./audio/wrapper/service";
 import { readWrapperSession, wrapperBaseDir } from "./audio/wrapper/session";
 import { dismissTwoFactorPrompt, showTwoFactorPrompt } from "./twoFactorWindow";
 import { initAudioBridge } from "./audio/bridge";
@@ -97,6 +98,8 @@ import {
   getAudioQuality,
   getAudioSpatial,
   getAudioWidevineDevice,
+  getAudioWrapperLogin,
+  setAudioWrapperLogin,
   getStorefront as getAudioStorefront,
 } from "./config";
 import { errorMessage, liveWebContents, runSteps } from "./utils";
@@ -664,6 +667,12 @@ function initAudioEngine(ses: Electron.Session): AudioEngine {
     },
   });
   wrapperService = wrapper;
+  // Adopt or sign in shortly after launch so the first lossless play is warm.
+  setTimeout(() => {
+    void restoreWrapperLogin().catch((error) =>
+      mainLog.warn(`wrapper restore failed: ${errorMessage(error)}`),
+    );
+  }, 1_500);
   ipcMain.handle("lidra:wrapper-status", () => wrapper.status());
   ipcMain.handle("lidra:wrapper-signin", async (_event, payload: unknown) => {
     const { email, password, code } = (payload ?? {}) as Record<string, string>;
@@ -693,6 +702,9 @@ function initAudioEngine(ses: Electron.Session): AudioEngine {
     await ses.clearCache();
     const win = BrowserWindow.getAllWindows()[0];
     if (win) await win.webContents.session.clearAuthCache().catch(() => undefined);
+    // The remembered wrapper sign-in is part of the account: drop it too, so a
+    // sign-out is a real sign-out on the next launch.
+    setAudioWrapperLogin(null);
     mainLog.info("signed out of the web session");
   });
   ipcMain.handle("lidra:wrapper-start", () => wrapper.start());
@@ -1019,6 +1031,64 @@ const AUTH_CODE_PREFIX = "[lidra] auth-code:";
 let pendingAuth: { email: string; password: string } | null = null;
 let pendingCode: string | null = null;
 let wrapperSignInStarted = false;
+
+/**
+ * The wrapper needs an app-session login for every process it runs, and a stale
+ * process returns noise instead of failing. Remembering the sign-in (encrypted
+ * with the OS keyring) lets Lidra start a fresh, correctly keyed wrapper at
+ * launch instead of asking the user to sign in again.
+ */
+function saveWrapperLogin(email: string, password: string): void {
+  if (!email || !password) return;
+  if (!safeStorage.isEncryptionAvailable()) {
+    mainLog.warn("wrapper: OS keyring unavailable, not remembering this sign-in");
+    return;
+  }
+  try {
+    const blob = safeStorage.encryptString(JSON.stringify({ email, password }));
+    setAudioWrapperLogin(blob.toString("base64"));
+    mainLog.info("wrapper: sign-in remembered");
+  } catch (error) {
+    mainLog.warn(`wrapper: could not remember the sign-in: ${errorMessage(error)}`);
+  }
+}
+
+function loadWrapperLogin(): { email: string; password: string } | null {
+  const stored = getAudioWrapperLogin();
+  if (!stored) return null;
+  try {
+    const json = safeStorage.decryptString(Buffer.from(stored, "base64"));
+    const parsed = JSON.parse(json) as { email?: string; password?: string };
+    if (!parsed.email || !parsed.password) return null;
+    return { email: parsed.email, password: parsed.password };
+  } catch (error) {
+    mainLog.warn(`wrapper: stored sign-in is unreadable: ${errorMessage(error)}`);
+    setAudioWrapperLogin(null);
+    return null;
+  }
+}
+
+/** Start a fresh wrapper from the remembered sign-in, if there is one. */
+async function restoreWrapperLogin(): Promise<void> {
+  if (!wrapperService || wrapperService.status().state === "running") return;
+  // A wrapper from an earlier run may still be serving; adopting it costs
+  // nothing and needs no credentials.
+  if (await isListening(wrapperService.status().decryptor)) {
+    const adopted = await wrapperService.start();
+    mainLog.info(`wrapper ${adopted.state} (${adopted.detail || "adopted"})`);
+    return;
+  }
+  const stored = loadWrapperLogin();
+  if (!stored) return;
+  mainLog.info("wrapper: starting from the remembered sign-in");
+  const status = await wrapperService.startWithLogin(stored.email, stored.password);
+  mainLog.info(`wrapper restore ${status.state}${status.detail ? ` (${status.detail})` : ""}`);
+  if (status.state === "error") {
+    // A changed password must not wedge every launch.
+    setAudioWrapperLogin(null);
+    mainLog.warn("wrapper: remembered sign-in no longer works; forgotten");
+  }
+}
 /** Watches for the player's session so the wrapper only logs in once it exists. */
 let wrapperSessionWatch: ReturnType<typeof setInterval> | null = null;
 
@@ -1030,6 +1100,7 @@ async function forwardAuthToWrapper(email: string, password: string, code?: stri
     mainLog.info("wrapper: signing in with the credentials from the Apple sign-in form");
     const status = await wrapperService.startWithLogin(email, password);
     mainLog.info(`wrapper sign-in ${status.state}${status.detail ? ` (${status.detail})` : ""}`);
+    if (status.state === "running") saveWrapperLogin(email, password);
     if (status.state !== "running") {
       // The run did not come up (wrong password, or Apple asked for a code), so a
       // later capture may retry instead of being swallowed by the latch. The

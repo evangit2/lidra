@@ -46,6 +46,11 @@ export interface WrapperServiceOptions {
   onNeedsCode?: () => void;
   /** How long to wait for the decrypt socket before giving up. */
   startTimeoutMs?: number;
+  /**
+   * Look for a free port pair instead of insisting on the configured one.
+   * Disabled by tests that pin the address.
+   */
+  portScan?: boolean;
 }
 
 /** Resolve `~` and environment variables in a user-supplied command line. */
@@ -81,6 +86,41 @@ export function probeTcp(address: string, timeoutMs = 700): Promise<boolean> {
   });
 }
 
+/** Is something already accepting connections on this address? */
+export function isListening(address: string, timeoutMs = 400): Promise<boolean> {
+  const colon = address.lastIndexOf(":");
+  if (colon === -1) return Promise.resolve(false);
+  const host = address.slice(0, colon) || "127.0.0.1";
+  const port = Number.parseInt(address.slice(colon + 1), 10);
+  if (!Number.isFinite(port)) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    const socket = net.createConnection({ host, port });
+    const done = (value: boolean): void => {
+      socket.destroy();
+      resolve(value);
+    };
+    socket.setTimeout(timeoutMs);
+    socket.once("connect", () => done(true));
+    socket.once("timeout", () => done(false));
+    socket.once("error", () => done(false));
+  });
+}
+
+/**
+ * Point a wrapper command at a specific port pair.
+ *
+ * A wrapper started by an earlier run can still be holding the configured ports
+ * (it runs as root, so the app cannot reap it), and the binary binds with
+ * SO_REUSEPORT: a second instance on the same port silently takes half the
+ * connections, half of which then decrypt with the wrong key context. Moving to
+ * a free pair keeps every process honest.
+ */
+export function retargetCommand(command: string, decryptPort: number, manifestPort: number): string {
+  return command
+    .replace(/(\s-D\s+)\d+/g, `$1${decryptPort}`)
+    .replace(/(\s-M\s+)\d+/g, `$1${manifestPort}`);
+}
+
 export class WrapperService {
   private child: ChildProcess | null = null;
   private state: WrapperState = "stopped";
@@ -95,6 +135,10 @@ export class WrapperService {
    * and a fresh process only has keys if it logs in the same way.
    */
   private lastLoginCommand: string | null = null;
+  /** Forces the next start to launch a new process instead of adopting one. */
+  private forceFresh = false;
+  /** Addresses the running process actually bound (ports can move). */
+  private active: { decryptor: string; manifest: string } | null = null;
   /** Longer deadline while an interactive login runs (auth + lease). */
   private loginTimeoutMs: number | null = null;
   private readonly options: Required<Pick<WrapperServiceOptions, "command" | "decryptor" | "manifest">> &
@@ -107,8 +151,8 @@ export class WrapperService {
   status(): WrapperStatus {
     return {
       state: this.state,
-      decryptor: this.options.decryptor,
-      manifest: this.options.manifest,
+      decryptor: this.active?.decryptor ?? this.options.decryptor,
+      manifest: this.active?.manifest ?? this.options.manifest,
       pid: this.child?.pid ?? null,
       detail: this.detail,
     };
@@ -129,12 +173,56 @@ export class WrapperService {
     }
     if (this.child && this.state === "running") return this.status();
 
+    // A wrapper started by an earlier Lidra run keeps serving: it runs as root,
+    // so the app cannot reap it and does not need to. Adopt it instead of
+    // starting a second process on the same port, which SO_REUSEPORT would let
+    // silently take half the connections with a different key context.
+    if (!this.forceFresh && this.options.portScan !== false && (await isListening(this.options.decryptor))) {
+      this.active = {
+        decryptor: this.options.decryptor,
+        manifest: this.options.manifest,
+      };
+      this.setState("running", "adopted a running wrapper");
+      wrapperLog.info(`adopted the wrapper already serving ${this.options.decryptor}`);
+      return this.status();
+    }
+
     this.codePrompted = false;
     this.setState("starting", "launching");
+
+    // Take a free port pair: an orphaned wrapper from an earlier run may still
+    // own the configured one, and sharing it silently corrupts decrypts.
+    let launch = command;
+    this.active = {
+      decryptor: this.options.decryptor,
+      manifest: this.options.manifest,
+    };
+    const configured = this.options.decryptor;
+    const colon = configured.lastIndexOf(":");
+    const host = colon === -1 ? "127.0.0.1" : configured.slice(0, colon) || "127.0.0.1";
+    const basePort = colon === -1 ? 10020 : Number.parseInt(configured.slice(colon + 1), 10);
+    if (Number.isFinite(basePort) && this.options.portScan !== false) {
+      for (let offset = 0; offset <= 20; offset += 1) {
+        const decryptPort = basePort + offset;
+        const manifestPort = basePort + 10_000 + offset;
+        const busy =
+          (await isListening(`${host}:${decryptPort}`)) ||
+          (await isListening(`${host}:${manifestPort}`));
+        if (busy) continue;
+        launch = retargetCommand(command, decryptPort, manifestPort);
+        this.active = {
+          decryptor: `${host}:${decryptPort}`,
+          manifest: `${host}:${manifestPort}`,
+        };
+        break;
+      }
+    }
+    wrapperLog.info(`wrapper ports ${this.active.decryptor} / ${this.active.manifest}`);
+
     const spawnImpl = this.options.spawnImpl ?? spawn;
     let child: ChildProcess;
     try {
-      child = spawnImpl(command, {
+      child = spawnImpl(launch, {
         shell: true,
         stdio: ["ignore", "pipe", "pipe"],
         env: { ...process.env, LD_LIBRARY_PATH: process.env.LD_LIBRARY_PATH ?? "" },
@@ -203,6 +291,9 @@ export class WrapperService {
     const loginCommand = `${this.options.command} -L ${quote(`${email}:${password}`)} -F`;
     this.loginOverride = loginCommand;
     this.lastLoginCommand = loginCommand;
+    // A sign-in must take effect: never hand back an already-running process
+    // whose context was derived from someone else's session.
+    this.forceFresh = true;
     // Signing in reaches Apple before any socket opens, so allow for it.
     this.loginTimeoutMs = 120_000;
     try {
@@ -210,6 +301,7 @@ export class WrapperService {
     } finally {
       this.loginOverride = null;
       this.loginTimeoutMs = null;
+      this.forceFresh = false;
     }
   }
 
@@ -223,9 +315,16 @@ export class WrapperService {
     if (!this.lastLoginCommand) {
       throw new Error("no wrapper sign-in available to restart with");
     }
+    // A restart exists to get a different key context, so never hand back the
+    // process we just asked to stop (it may still be holding the port).
+    this.forceFresh = true;
     this.stop();
     await new Promise((resolve) => setTimeout(resolve, 500));
-    return this.start();
+    try {
+      return await this.start();
+    } finally {
+      this.forceFresh = false;
+    }
   }
 
   /** Stop the wrapper if Lidra started it. */

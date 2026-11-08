@@ -52,6 +52,8 @@ interface StoreSchema {
   'audio.keyTransport': string;
   'audio.keyService': string;
   'audio.keyToken': string | null;
+  /** Encrypted wrapper sign-in (base64), written by the main process. */
+  'audio.wrapperLogin': string | null;
   'audio.ffmpegPath': string | null;
   'audio.emeShim': boolean;
   'audio.decryptorService': string;
@@ -457,6 +459,19 @@ export function getAudioKeyToken(): string | null | undefined {
 /** Persist the optional bearer token for an HTTP key service. */
 export function setAudioKeyToken(token: string | null): void {
   setConfigValue('audio.keyToken', token);
+}
+
+/**
+ * Encrypted wrapper sign-in, stored so the audio session survives a restart.
+ * The value is opaque: encryption and decryption happen in the main process.
+ */
+export function getAudioWrapperLogin(): string | null | undefined {
+  return getConfigValueOptional('audio.wrapperLogin');
+}
+
+/** Persist (or with null, forget) the encrypted wrapper sign-in. */
+export function setAudioWrapperLogin(value: string | null): void {
+  setConfigValue('audio.wrapperLogin', value);
 }
 
 /** Read an explicit ffmpeg path, or undefined to use PATH. */

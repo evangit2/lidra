@@ -1,7 +1,12 @@
 import { describe, it, expect, vi } from "vitest";
 import { EventEmitter } from "node:events";
 import net from "node:net";
-import { WrapperService, expandCommand, probeTcp } from "../src/audio/wrapper/service";
+import {
+  WrapperService,
+  expandCommand,
+  probeTcp,
+  retargetCommand,
+} from "../src/audio/wrapper/service";
 
 vi.mock("electron-log/main", () => {
   const scope = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
@@ -32,6 +37,7 @@ function service(overrides: Partial<ConstructorParameters<typeof WrapperService>
     manifest: "127.0.0.1:20020",
     spawnImpl,
     probe: async () => true,
+    portScan: false,
     ...overrides,
   });
   return { instance, child, spawnImpl };
@@ -107,5 +113,60 @@ describe("wrapper supervision", () => {
     await instance.start();
     child.stderr?.emit("data", Buffer.from("FairPlayGetSubscriptionStatus: invalid list\n"));
     expect(instance.status().detail).toContain("FairPlayGetSubscriptionStatus");
+  });
+});
+
+describe("port pair selection", () => {
+  it("retargets -D and -M in a command line", () => {
+    const command = "cd /opt/w && sudo -n ./wrapper -H 127.0.0.1 -D 10020 -M 20020 -L 'a:b' -F";
+    expect(retargetCommand(command, 10021, 20021)).toBe(
+      "cd /opt/w && sudo -n ./wrapper -H 127.0.0.1 -D 10021 -M 20021 -L 'a:b' -F",
+    );
+  });
+
+  it("moves to a free pair when the manifest port is taken", async () => {
+    // Occupy only the manifest side: a listener on the decrypt port is treated
+    // as an adoptable wrapper, but a half-taken pair means a real conflict.
+    const probe = net.createServer();
+    await new Promise<void>((resolve) => probe.listen(0, "127.0.0.1", resolve));
+    const manifestPort = (probe.address() as net.AddressInfo).port;
+    const port = manifestPort - 10_000;
+    const child = fakeChild();
+    const spawnImpl = vi.fn(() => child) as unknown as typeof import("node:child_process").spawn;
+    const instance = new WrapperService({
+      command: `~/.lidra-wrapper/wrapper -D ${port} -M ${manifestPort}`,
+      decryptor: `127.0.0.1:${port}`,
+      manifest: `127.0.0.1:${manifestPort}`,
+      spawnImpl,
+      probe: async () => true,
+      startTimeoutMs: 600,
+    });
+    const status = await instance.start();
+    expect(status.decryptor).toBe(`127.0.0.1:${port + 1}`);
+    expect(String(spawnImpl.mock.calls[0][0])).toContain(`-D ${port + 1}`);
+    await new Promise<void>((resolve) => probe.close(() => resolve()));
+  });
+});
+
+describe("adoption", () => {
+  it("uses a wrapper that an earlier run left running", async () => {
+    const listener = net.createServer((socket) => socket.destroy());
+    await new Promise<void>((resolve) => listener.listen(0, "127.0.0.1", resolve));
+    const port = (listener.address() as net.AddressInfo).port;
+    const child = fakeChild();
+    const spawnImpl = vi.fn(() => child) as unknown as typeof import("node:child_process").spawn;
+    const instance = new WrapperService({
+      command: `~/.lidra-wrapper/wrapper -D ${port} -M ${port + 10_000}`,
+      decryptor: `127.0.0.1:${port}`,
+      manifest: `127.0.0.1:${port + 10_000}`,
+      spawnImpl,
+      probe: async () => true,
+      startTimeoutMs: 600,
+    });
+    const status = await instance.start();
+    expect(status.state).toBe("running");
+    expect(status.decryptor).toBe(`127.0.0.1:${port}`);
+    expect(spawnImpl).not.toHaveBeenCalled();
+    await new Promise<void>((resolve) => listener.close(() => resolve()));
   });
 });
