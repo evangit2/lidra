@@ -74,6 +74,7 @@ import { initNotificationProbe } from "./notify";
 import { AudioEngine } from "./audio/engine";
 import { CredentialStore } from "./audio/tokens";
 import { KeyCache, createKeyProvider } from "./audio/keys";
+import { createWidevineProvider } from "./audio/widevine/provider";
 import { initAudioBridge } from "./audio/bridge";
 import {
   getAudioDecryptorService,
@@ -85,6 +86,7 @@ import {
   getAudioKeyTransport,
   getAudioManifestService,
   getAudioQuality,
+  getAudioWidevineDevice,
   getStorefront as getAudioStorefront,
 } from "./config";
 import { errorMessage, liveWebContents, runSteps } from "./utils";
@@ -431,13 +433,25 @@ function initPlayerIPC(): Player {
  */
 function initAudioEngine(ses: Electron.Session): AudioEngine {
   const credentials = new CredentialStore(ses);
+  // Prefer a Widevine licence (no external service) when a device blob is
+  // configured; otherwise fall back to a key service or wrapper socket.
+  const widevine = createWidevineProvider(getAudioWidevineDevice() ?? undefined, () => {
+    const snapshot = credentials.snapshot();
+    if (!snapshot.developerToken || !snapshot.mediaUserToken) return null;
+    return {
+      developerToken: snapshot.developerToken,
+      mediaUserToken: snapshot.mediaUserToken,
+    };
+  });
   const keyCache = new KeyCache(
-    createKeyProvider({
-      transport: getAudioKeyTransport(),
-      address: getAudioKeyService(),
-      token: getAudioKeyToken() ?? undefined,
-    }),
+    widevine ??
+      createKeyProvider({
+        transport: getAudioKeyTransport(),
+        address: getAudioKeyService(),
+        token: getAudioKeyToken() ?? undefined,
+      }),
   );
+  mainLog.info(`audio key source: ${widevine ? "widevine licence" : keyCache.providerName}`);
   const engine = new AudioEngine({
     credentials,
     keyCache,

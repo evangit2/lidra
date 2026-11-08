@@ -45,6 +45,7 @@ Configuration lives in the Audio section of Settings or the environment:
 | `LIDRA_DECRYPTOR` | wrapper decrypt socket; switches playback to remote decryption |
 | `LIDRA_MANIFEST_SERVICE` | wrapper manifest socket, for masters the API omits |
 | `LIDRA_FFMPEG` | explicit ffmpeg path |
+| `LIDRA_WIDEVINE_DEVICE` | `.wvd` file (or directory with `client_id.bin` + `private_key.pem`) for the built-in Widevine licence exchange |
 
 ### Legal
 

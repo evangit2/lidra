@@ -56,6 +56,7 @@ interface StoreSchema {
   'audio.emeShim': boolean;
   'audio.decryptorService': string;
   'audio.manifestService': string;
+  'audio.widevineDevice': string | null;
 }
 
 const store = new Conf<StoreSchema>();
@@ -493,4 +494,14 @@ export function getAudioManifestService(): string {
 /** Persist the wrapper manifest-socket address. */
 export function setAudioManifestService(address: string): void {
   setConfigValue('audio.manifestService', address);
+}
+
+/** Read the Widevine device blob path (a `.wvd` file or a directory). */
+export function getAudioWidevineDevice(): string | null | undefined {
+  return envString('LIDRA_WIDEVINE_DEVICE') ?? getConfigValueOptional('audio.widevineDevice');
+}
+
+/** Persist the Widevine device blob path. */
+export function setAudioWidevineDevice(path: string | null): void {
+  setConfigValue('audio.widevineDevice', path);
 }

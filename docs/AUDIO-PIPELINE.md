@@ -83,10 +83,45 @@ The pipeline is built around never waiting for a whole track:
    skips download, decryption and muxing entirely.
 5. Conversion only happens when the codec needs it. AAC costs no transcode.
 
+## Why the key type depends on the client
+
+Apple picks the DRM system from the client it believes it is talking to, not from
+the account. Same subscription, same `media-user-token`, different output:
+
+| Client the manifest is issued to | `EXT-X-KEY` | Key comes from |
+| --- | --- | --- |
+| Web player (Chrome/Electron session) | `data:` URI with a Widevine `pssh` | Widevine licence endpoint |
+| Android/Apple device wrapper | `skd://itunes.apple.com/…` | FairPlay key service |
+
+Lidra's signed-in page is a web session, so the `enhancedHls` it resolves
+contains **Widevine** PSSH — verified against a live subscription, including with
+a Safari user agent. A FairPlay-only key service therefore cannot unlock that
+manifest, and a Widevine key cannot unlock an `skd://` manifest. Lidra accepts
+whichever the playlist declares and sends it to the matching key source.
+
 ## Key sources
 
-Lidra contains no key extraction. It asks a service you run for either raw keys
-or for decryption itself. Both are configured, not bundled.
+Lidra contains no key extraction and bundles no CDM. It either performs the
+Widevine licence exchange with a device you supply, or asks a service you run for
+keys (or for decryption itself). All of it is configured, never bundled.
+
+### Widevine licence (built in, `LIDRA_WIDEVINE_DEVICE`)
+
+Point `LIDRA_WIDEVINE_DEVICE` at a `.wvd` file, or at a directory containing
+`client_id.bin` and `private_key.pem`. Lidra then requests the licence itself:
+
+```
+PSSH ──► SignedMessage(LicenseRequest)  signed with the device RSA key
+      ──► POST play.itunes.apple.com/…/acquireWebPlaybackLicense
+          authorization: Bearer <developer token>
+          x-apple-music-user-token: <media user token>
+      ──► SignedMessage(License) with RSA-wrapped session key
+      ──► content key = AES-128-CBC⁻¹(CMAC(session key, request), key.iv)
+```
+
+`.wvd` layout: `u32be len + client_id protobuf + u32be len + RSA private key`.
+The CDM is a device credential, not a secret Lidra ships or derives; a licence
+issued through it is scoped to the subscriber who signed in.
 
 ### Key service (`LIDRA_KEY_SERVICE`, `LIDRA_KEY_TRANSPORT`)
 
