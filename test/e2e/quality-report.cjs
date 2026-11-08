@@ -18,7 +18,7 @@ const path = require("node:path");
 const root = path.dirname(path.dirname(__dirname));
 const dist = path.join(root, "dist");
 
-const { parseMasterPlaylist, parseMediaPlaylist, rankVariants, rangeHeader } = require(
+const { parseMasterPlaylist, parseMediaPlaylist, rankVariants, selectVariant, rangeHeader } = require(
   path.join(dist, "audio", "hls.js"),
 );
 const { resolveSong, fetchText, fetchStream } = require(path.join(dist, "audio", "catalog.js"));
@@ -175,13 +175,24 @@ async function main() {
       console.log("REPORT " + JSON.stringify({ id: song.id, stage: "master", url: asset.manifestUrl, error: String(reason && reason.message ? reason.message : reason) }));
       continue;
     }
-    const ranked = rankVariants(variants);
+    if (process.env.LIDRA_DEBUG_VARIANTS) {
+      for (const v of variants) {
+        console.log("VARIANT " + JSON.stringify({ group: v.audioGroup, tier: v.tier, codecs: v.codecs, binaural: !!v.binaural, downmix: !!v.downmix, bw: v.bandwidth }));
+      }
+    }
+    const ranked = process.env.LIDRA_SPATIAL
+      ? [
+          selectVariant(variants, process.env.LIDRA_PREF || "atmos", {
+            spatial: process.env.LIDRA_SPATIAL,
+          }),
+        ].filter(Boolean)
+      : rankVariants(variants);
     if (ranked.length === 0) continue;
 
     // One inspection per tier this song actually offers.
     for (const variant of ranked) {
       if (seen.has(`${song.id}:${variant.tier}`)) continue;
-      if (variant.tier === "aac" && !process.env.LIDRA_REPORT_AAC) continue;
+      if (variant.tier === "aac" && !process.env.LIDRA_REPORT_AAC && !process.env.LIDRA_SPATIAL) continue;
       seen.add(`${song.id}:${variant.tier}`);
 
       let facts = null;

@@ -40,6 +40,10 @@ export interface AudioVariant {
   channels?: string;
   /** Dolby Atmos delivered as E-AC-3 + Joint Object Coding (`CHANNELS="16/JOC"`). */
   joc?: boolean;
+  /** Apple's own spatial render folded to stereo (`...-binaural`). */
+  binaural?: boolean;
+  /** Apple's stereo fold-down of a multichannel mix (`...-downmix`). */
+  downmix?: boolean;
   /** Human readable label, e.g. `ALAC 24-bit/192 kHz`. */
   label: string;
 }
@@ -210,6 +214,9 @@ export function classifyVariant(
     tokens.length > 0
       ? tokens[tokens.length - 1]
       : Math.round(bandwidth / 1000);
+  const group = audioGroup.toLowerCase();
+  const binaural = group.includes("binaural");
+  const downmix = group.includes("downmix");
   return {
     codecs,
     audioGroup,
@@ -217,7 +224,13 @@ export function classifyVariant(
     tier: "aac",
     bitrateKbps,
     channels,
-    label: `AAC ${bitrateKbps} kbps`,
+    binaural,
+    downmix,
+    label: binaural
+      ? `Spatial Audio binaural (AAC ${bitrateKbps} kbps)`
+      : downmix
+        ? `AAC ${bitrateKbps} kbps downmix`
+        : `AAC ${bitrateKbps} kbps`,
   };
 }
 
@@ -306,12 +319,35 @@ export function rankVariants(variants: readonly AudioVariant[]): AudioVariant[] 
  * and AAC when the song has no hi-res master, which matches how Apple's own
  * clients degrade. `null` means "best available".
  */
+/** How object audio should be presented when a track offers Atmos. */
+export type SpatialMode = "bed" | "binaural";
+
+export interface SelectOptions {
+  /**
+   * `bed` plays the 5.1 E-AC-3 core (best fidelity, no height objects);
+   * `binaural` plays Apple's own spatial render folded to stereo, which is the
+   * only form of object audio a browser can present without an Atmos renderer.
+   */
+  spatial?: SpatialMode;
+}
+
 export function selectVariant(
   variants: readonly AudioVariant[],
   preference: QualityTier | null,
+  options: SelectOptions = {},
 ): AudioVariant | null {
   if (variants.length === 0) return null;
   const ranked = rankVariants(variants);
+
+  // A binaural request only changes the answer when the caller asked for object
+  // audio; auto and every other tier keep the fidelity-first ordering.
+  if (options.spatial === "binaural" && preference === "atmos") {
+    const binaural = ranked
+      .filter((variant) => variant.binaural)
+      .sort((left, right) => right.bandwidth - left.bandwidth)[0];
+    if (binaural) return binaural;
+  }
+
   if (preference === null) return ranked[0];
   const best = ranked.find((variant) => variant.tier === preference);
   return best ?? ranked[0];

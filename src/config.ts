@@ -57,6 +57,7 @@ interface StoreSchema {
   'audio.decryptorService': string;
   'audio.manifestService': string;
   'audio.widevineDevice': string | null;
+  'audio.spatial': 'bed' | 'binaural';
 }
 
 const store = new Conf<StoreSchema>();
@@ -504,4 +505,16 @@ export function getAudioWidevineDevice(): string | null | undefined {
 /** Persist the Widevine device blob path. */
 export function setAudioWidevineDevice(path: string | null): void {
   setConfigValue('audio.widevineDevice', path);
+}
+
+/** How Atmos is presented: the 5.1 bed (default) or Apple's binaural render. */
+export function getAudioSpatial(): 'bed' | 'binaural' {
+  const env = envString('LIDRA_SPATIAL')?.toLowerCase();
+  if (env === 'binaural' || env === 'bed') return env;
+  return getConfigValue('audio.spatial', 'bed') === 'binaural' ? 'binaural' : 'bed';
+}
+
+/** Persist the spatial mode. */
+export function setAudioSpatial(mode: 'bed' | 'binaural'): void {
+  setConfigValue('audio.spatial', mode);
 }

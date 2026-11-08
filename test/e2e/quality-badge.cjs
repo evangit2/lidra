@@ -63,7 +63,7 @@ app.whenReady().then(async () => {
       // Does the pill sit on top of anything interactive?
       overInteractive: (() => {
         const el = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
-        return el ? el.id || el.tagName : "none";
+        return { tag: el ? el.tagName : "none", id: el ? el.id : "", isBadge: !!(el && node.contains(el)) };
       })(),
     };
   })()`);

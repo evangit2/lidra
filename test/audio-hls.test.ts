@@ -155,4 +155,40 @@ file.m4s
     const text = "#EXTM3U\n#EXTINF:2,\n#EXT-X-BYTERANGE:0@0\nfile.m4s\n";
     expect(() => parseMediaPlaylist(text, "https://host/p.m3u8")).toThrow(/BYTERANGE/);
   });
+
+  it("recognises Apple's binaural spatial render", () => {
+    const binaural = classifyVariant("mp4a.40.2", "audio-stereo-256-binaural", 262189, "2/-/BINAURAL");
+    expect(binaural.binaural).toBe(true);
+    expect(binaural.tier).toBe("aac");
+    expect(binaural.label).toBe("Spatial Audio binaural (AAC 256 kbps)");
+
+    const downmix = classifyVariant("mp4a.40.2", "audio-stereo-128-downmix", 131652, "2/-/DOWNMIX");
+    expect(downmix.binaural).toBe(false);
+    expect(downmix.downmix).toBe(true);
+    expect(downmix.label).toBe("AAC 128 kbps downmix");
+  });
+
+  it("picks the binaural render only when object audio is requested", () => {
+    const variants = [
+      classifyVariant("alac", "audio-alac-stereo-192000-24", 1878544, "2"),
+      classifyVariant("ec-3", "audio-atmos-2768", 770148, "16/JOC"),
+      classifyVariant("mp4a.40.2", "audio-stereo-256-binaural", 262189, "2/-/BINAURAL"),
+      classifyVariant("mp4a.40.2", "audio-stereo-256", 262189, "2"),
+    ].map((variant, index) => ({ ...variant, uri: `https://host/${index}.m3u8` }));
+
+    const bed = selectVariant(variants, "atmos", { spatial: "bed" });
+    expect(bed?.codecs).toBe("ec-3");
+
+    const spatial = selectVariant(variants, "atmos", { spatial: "binaural" });
+    expect(spatial?.binaural).toBe(true);
+    expect(spatial?.label).toBe("Spatial Audio binaural (AAC 256 kbps)");
+
+    // Auto must stay fidelity-first: the 192 kHz ALAC wins over any binaural mix.
+    expect(selectVariant(variants, null, { spatial: "binaural" })?.codecs).toBe("alac");
+    // And a binaural request for a non-Atmos tier changes nothing.
+    expect(selectVariant(variants, "hi-res", { spatial: "binaural" })?.codecs).toBe("alac");
+    // Falls back to the bed when a track has no binaural rendition.
+    const noBinaural = variants.filter((variant) => !variant.binaural);
+    expect(selectVariant(noBinaural, "atmos", { spatial: "binaural" })?.codecs).toBe("ec-3");
+  });
 });

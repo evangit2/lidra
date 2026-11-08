@@ -38,7 +38,7 @@ hi-res, lossless, Atmos and AAC matched their claim.
 | --- | --- | --- |
 | AAC-LC / HE-AAC | stream copy (fMP4) | no |
 | ALAC lossless / hi-res | FLAC in fragmented MP4 (bit-exact) | yes |
-| Dolby Atmos (E-AC-3) | FLAC, 5.1 preserved | yes |
+| Dolby Atmos (E-AC-3) | 5.1 FLAC bed, or Apple's binaural render in stereo (`LIDRA_SPATIAL`) | yes |
 | Dolby Audio (AC-3) | FLAC, 5.1 preserved | yes |
 
 `ffmpeg-static` is bundled for Linux, macOS and Windows and unpacked next to the
@@ -57,6 +57,7 @@ Configuration lives in the Audio section of Settings or the environment:
 | `LIDRA_DECRYPTOR` | wrapper decrypt socket; switches playback to remote decryption |
 | `LIDRA_MANIFEST_SERVICE` | wrapper manifest socket, for masters the API omits |
 | `LIDRA_FFMPEG` | explicit ffmpeg path |
+| `LIDRA_SPATIAL` | `bed` (5.1 Atmos core, default) or `binaural` (Apple's spatial render in stereo) |
 | `LIDRA_WIDEVINE_DEVICE` | `.wvd` file (or directory with `client_id.bin` + `private_key.pem`) for the built-in Widevine licence exchange |
 
 Verify the pipeline against a live account (uses the signed-in session, prints

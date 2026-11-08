@@ -21,6 +21,7 @@ import {
   parseMediaPlaylist,
   rankVariants,
   selectVariant,
+  type SpatialMode,
   rangeHeader,
   type AudioVariant,
   type MediaPlaylist,
@@ -55,6 +56,8 @@ export interface PipelineOptions {
   decryptorService?: string;
   /** Wrapper manifest socket address; overrides the API's manifest when set. */
   manifestService?: string;
+  /** How Atmos should be presented: the 5.1 bed or Apple's binaural render. */
+  spatial?: SpatialMode;
 }
 
 export interface PipelineSnapshot {
@@ -121,6 +124,7 @@ export class TrackPipeline {
   private check: QualityCheck | null = null;
   private failure: string | undefined;
   private variant: AudioVariant | null = null;
+  private readonly spatial: SpatialMode;
   private bytesIn = 0;
   private readonly startedAt = Date.now();
   private transcoder: Transcoder | null = null;
@@ -131,6 +135,7 @@ export class TrackPipeline {
   constructor(private readonly options: PipelineOptions) {
     this.asset = options.asset;
     this.preference = options.preference;
+    this.spatial = options.spatial ?? "bed";
     this.id = pipelineId(options.asset, null);
     this.mount = `/track/${this.id}`;
     this.directory = path.join(options.cacheRoot, this.id);
@@ -185,6 +190,7 @@ export class TrackPipeline {
         ? (selectVariant(
             parseMasterPlaylist(playlist, this.asset.manifestUrl),
             this.preference,
+            { spatial: this.spatial },
           ) ?? null)
         : null;
       if (!this.variant) throw new Error("cached track lost its quality metadata");
@@ -197,7 +203,7 @@ export class TrackPipeline {
     if (variants.length === 0) {
       throw new Error("manifest listed no audio renditions");
     }
-    const variant = selectVariant(variants, this.preference);
+    const variant = selectVariant(variants, this.preference, { spatial: this.spatial });
     if (!variant) throw new Error("no rendition matched the quality preference");
     this.variant = variant;
 

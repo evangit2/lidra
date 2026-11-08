@@ -27,7 +27,7 @@
         position: fixed;
         left: 16px;
         bottom: 92px;
-        z-index: 2147483000;
+        z-index: 2147483647;
         display: flex;
         align-items: center;
         gap: 8px;
@@ -69,7 +69,9 @@
     node.id = BADGE_ID;
     node.setAttribute("data-visible", "false");
     node.innerHTML = '<span class="lidra-dot"></span><span class="lidra-text"></span>';
-    (document.body || document.documentElement).appendChild(node);
+    // Mount on the document element so a page-level stacking context cannot
+    // cover it; the player bar lives inside body.
+    (document.documentElement || document.body).appendChild(node);
     return node;
   }
 

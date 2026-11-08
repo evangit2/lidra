@@ -48,6 +48,12 @@ land 1–2 kbps either side of the nominal 256 kbps because that is what the
 encoder's own average-bitrate field says; the check allows 15 % before it calls
 a mismatch.
 
+Atmos integrity is checked frame by frame, not just at the codec level: 1,404
+frames across 44.93 s of the 768 kbps rendition, each exactly 3,072 bytes, offsets
+contiguous, every subsample split covering its frame; the 448 kbps rendition is
+1,792 bytes per frame. `LIDRA_SPATIAL=binaural` selects Apple's spatial render
+instead, measured at 48 kHz stereo 259 kbps.
+
 AAC alone was also checked on both a 24/44.1 and a 16/44.1 title, so the tier
 ladder is verified on quiet and loud masters.
 

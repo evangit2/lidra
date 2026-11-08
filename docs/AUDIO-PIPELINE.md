@@ -119,6 +119,21 @@ Lidra contains no key extraction and bundles no CDM. It either performs the
 Widevine licence exchange with a device you supply, or asks a service you run for
 keys (or for decryption itself). All of it is configured, never bundled.
 
+### Object audio and spatial presentation
+
+Atmos is delivered as E-AC-3 with Joint Object Coding: the manifest advertises
+`CHANNELS="16/JOC"`, while the decoded core is 5.1. Lidra offers two presentations,
+because a browser has no Atmos renderer and FLAC cannot carry objects:
+
+| `LIDRA_SPATIAL` | What plays | Measured |
+| --- | --- | --- |
+| `bed` (default) | the 5.1 E-AC-3 core, repackaged to 5.1 FLAC | 48 kHz, 6 channels, 768 kbps (or 448 for the lower tier) |
+| `binaural` | Apple's own spatial render folded to stereo (`...-binaural`) | 48 kHz stereo, 259 kbps AAC |
+
+`binaural` only changes the answer when the quality preference is `atmos`; `auto`,
+`hi-res` and `lossless` keep the fidelity-first ordering. Object metadata is not
+extracted in either mode — heights and head-tracked rendering are not reproduced.
+
 ### Verified quality
 
 Every pipeline inspects the clear initialisation segment before decrypting

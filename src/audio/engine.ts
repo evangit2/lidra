@@ -12,7 +12,14 @@ import fs from "node:fs";
 import path from "node:path";
 import log from "electron-log/main";
 import { resolveSong, type SongAsset } from "./catalog";
-import { parseMasterPlaylist, rankVariants, selectVariant, type AudioVariant, type QualityTier } from "./hls";
+import {
+  parseMasterPlaylist,
+  rankVariants,
+  selectVariant,
+  type AudioVariant,
+  type QualityTier,
+  type SpatialMode,
+} from "./hls";
 import type { KeyCache } from "./keys";
 import { TrackPipeline, transformFor, type PreparedTrack } from "./pipeline";
 import { HlsServer, type TrackLocation } from "./server";
@@ -32,6 +39,8 @@ export interface AudioEngineOptions {
   decryptMode?: "key" | "wrapper";
   decryptorService?: string;
   manifestService?: string;
+  /** How Atmos is presented: the 5.1 bed, or Apple's binaural render. */
+  spatial?: SpatialMode;
   /** Called with a snapshot whenever a pipeline changes state. */
   onStateChange?: (snapshot: ReturnType<TrackPipeline["snapshot"]>) => void;
 }
@@ -171,6 +180,7 @@ export class AudioEngine {
         decryptMode: this.options.decryptMode,
         decryptorService: this.options.decryptorService,
         manifestService: this.options.manifestService,
+        spatial: this.options.spatial,
       });
       try {
         const prepared = await pipeline.prepare();

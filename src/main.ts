@@ -87,6 +87,7 @@ import {
   getAudioKeyTransport,
   getAudioManifestService,
   getAudioQuality,
+  getAudioSpatial,
   getAudioWidevineDevice,
   getStorefront as getAudioStorefront,
 } from "./config";
@@ -496,6 +497,7 @@ function initAudioEngine(ses: Electron.Session): AudioEngine {
       return quality === "auto" ? null : quality;
     },
     ffmpegPath: ffmpegPath ?? undefined,
+    spatial: getAudioSpatial(),
     decryptMode: getAudioDecryptorService().trim() ? "wrapper" : "key",
     decryptorService: getAudioDecryptorService(),
     manifestService: getAudioManifestService(),
