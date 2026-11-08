@@ -1,5 +1,5 @@
 <h1 align="center">
-  <img src="assets/lidra-mark.png" width="128" height="128" alt="Lidra">
+  <img src="assets/lidra-mark.png?v=2" width="128" height="128" alt="Lidra">
   <br />
   Lidra
 </h1>
