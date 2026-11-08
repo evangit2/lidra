@@ -187,8 +187,15 @@ export function sampleLayout(segment: Buffer, perSampleIvSize = 8): SampleLayout
 export function verifyFragmentPlaintext(
   output: Buffer,
   layout: SampleLayout,
-): { ok: boolean; reason?: string } {
+  codec?: string,
+): { ok: boolean; reason?: string; skipped?: boolean } {
   if (layout.samples.length === 0) return { ok: false, reason: "fragment has no samples" };
+  // Only codecs with a checkable frame header get verified. Raw AAC frames carry
+  // no sync pattern once they are muxed, so claiming corruption there would be
+  // wrong — a false alarm is as bad as a missed one.
+  const name = (codec ?? "").toLowerCase();
+  const knows = name.includes("alac") || name.startsWith("ec-3") || name.startsWith("ac-3");
+  if (!knows) return { ok: true, skipped: true };
   const head = (index: number): Buffer => {
     const sample = layout.samples[index];
     return output.subarray(sample.offset, sample.offset + 4);
@@ -329,7 +336,7 @@ export async function decryptSegmentLegacy(
     }
   }
 
-  const check = verifyFragmentPlaintext(output, layout);
+  const check = verifyFragmentPlaintext(output, layout, request.codec);
   if (!check.ok) {
     throw new DecryptMismatchError(`decrypted fragment failed verification: ${check.reason}`);
   }

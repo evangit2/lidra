@@ -440,6 +440,7 @@ export class TrackPipeline {
         cryptByteBlock: encryptionOf(info).cryptByteBlock,
         skipByteBlock: encryptionOf(info).skipByteBlock,
         perSampleIvSize: encryptionOf(info).perSampleIvSize,
+        codec: this.variant?.codecs,
       };
       const decryptor = (this.legacy ??= new LegacyDecryptor(service));
       try {

@@ -57,6 +57,8 @@ export interface LegacyRequest {
   skipByteBlock?: number;
   /** 0 when the track uses a constant IV, so senc carries none. */
   perSampleIvSize?: number;
+  /** Codec of the rendition, used to verify the decrypted frame headers. */
+  codec?: string;
 }
 
 /** Serialises requests onto one connection: the service is stateful. */

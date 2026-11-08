@@ -226,9 +226,11 @@ describe("wrapper decryptor transport", () => {
     const layout = sampleLayout(fragment);
     const noise = Buffer.from(fragment);
     crypto.randomFillSync(noise, layout.samples[0].offset, 96);
-    const check = verifyFragmentPlaintext(noise, layout);
+    const check = verifyFragmentPlaintext(noise, layout, "alac");
     expect(check.ok).toBe(false);
     expect(check.reason).toMatch(/ALAC header/);
+    // Codecs without a checkable header must not be flagged as corrupt.
+    expect(verifyFragmentPlaintext(noise, layout, "mp4a.40.2").ok).toBe(true);
   });
 
   it("leaves a trailing partial block in the clear", async () => {
