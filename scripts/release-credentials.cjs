@@ -1,8 +1,14 @@
 'use strict';
 
-/** Identify tag builds, which require release credentials. */
+/**
+ * Identify tag builds, which require release credentials.
+ *
+ * A fork without the upstream Last.fm secrets can opt out explicitly; the
+ * packaged app then ships with scrobbling unavailable instead of failing the
+ * whole release.
+ */
 function isOfficialBuild(env = process.env) {
-  return env.GITHUB_REF_TYPE === 'tag';
+  return env.GITHUB_REF_TYPE === 'tag' && env.LIDRA_ALLOW_MISSING_CREDENTIALS !== '1';
 }
 
 /** Return whether both credentials exist. Throw for a partial pair or a missing required pair. */

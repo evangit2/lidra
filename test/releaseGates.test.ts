@@ -59,6 +59,10 @@ describe("release credential gates", () => {
     expect(isOfficialBuild({ GITHUB_REF_TYPE: "tag" })).toBe(true);
     expect(isOfficialBuild({ GITHUB_REF_TYPE: "branch" })).toBe(false);
     expect(isOfficialBuild({})).toBe(false);
+    // A fork without Last.fm secrets opts out explicitly instead of failing.
+    expect(
+      isOfficialBuild({ GITHUB_REF_TYPE: "tag", LIDRA_ALLOW_MISSING_CREDENTIALS: "1" }),
+    ).toBe(false);
   });
 
   it("allows an unconfigured local build", () => {

@@ -245,6 +245,9 @@ jobs:
         env:
           LIDRA_LASTFM_API_KEY: ${{ startsWith(github.ref, 'refs/tags/') && secrets.LIDRA_LASTFM_API_KEY || '' }}
           LIDRA_LASTFM_API_SECRET: ${{ startsWith(github.ref, 'refs/tags/') && secrets.LIDRA_LASTFM_API_SECRET || '' }}
+          # This fork has no Last.fm application secrets. Releases ship with
+          # scrobbling disabled rather than failing every build job.
+          LIDRA_ALLOW_MISSING_CREDENTIALS: "1"
       - name: Build distributables
         run: npx electron-builder --publish never ${{ matrix.targets }}
       # ffmpeg-static installs the host binary, so packaging for another platform
