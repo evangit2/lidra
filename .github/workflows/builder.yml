@@ -255,15 +255,13 @@ jobs:
         shell: bash
         run: |
           test -s vendor/wrapper/opt/lidra/wrapper
-          mkdir -p build/wrapper-tar
-          tar czf build/wrapper-tar/wrapper-rootfs.tar.gz -C vendor/wrapper bin etc lib lib64 opt usr
+          bash scripts/build-wsl-rootfs.sh build/wrapper-tar/wrapper-rootfs.tar.gz
           # List once into a file: piping into `grep -q` closes the pipe early and
           # makes tar fail with a write error.
           tar tzf build/wrapper-tar/wrapper-rootfs.tar.gz > build/wrapper-tar/entries.txt
-          grep -qx 'bin/sh' build/wrapper-tar/entries.txt
-          grep -qx 'etc/passwd' build/wrapper-tar/entries.txt
-          grep -qx 'opt/lidra/wrapper' build/wrapper-tar/entries.txt
-          du -sh build/wrapper-tar/wrapper-rootfs.tar.gz
+          grep -qx './bin/sh' build/wrapper-tar/entries.txt
+          grep -qx './etc/passwd' build/wrapper-tar/entries.txt
+          grep -qx './opt/lidra/wrapper' build/wrapper-tar/entries.txt
       - name: Build distributables
         run: npx electron-builder --publish never ${{ matrix.targets }}
       # A package without the runtime cannot play lossless, and it is a 50 MB

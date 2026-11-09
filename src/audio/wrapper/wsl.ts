@@ -29,7 +29,7 @@ export const PREFERRED_WSL_VERSION = 2;
  * release is rebuilt instead of reused. An imported root without `/etc/passwd`
  * cannot resolve `-u root`, which WSL reports as WSL_E_USER_NOT_FOUND.
  */
-export const WSL_PAYLOAD_REVISION = "2026-11-10-shipped-tar";
+export const WSL_PAYLOAD_REVISION = "2026-11-10-alpine";
 
 /** Name of the Linux environment Lidra imports for itself. */
 export const WSL_DISTRO = "LidraWrapper";
@@ -132,9 +132,11 @@ export function buildWslCommand(options: {
     .join(" ");
   // `--base-dir rootfs` is what a hand install passes: without it the wrapper
   // looks for its Android image somewhere else and exits immediately.
+  // The environment is Alpine (musl); the wrapper is a glibc binary, so it runs
+  // through the loader and libc that ship with it.
   const script =
-    `cd ${shellQuote(directory)} && exec ./wrapper -H ${host} -D ${options.decryptPort} -M ${options.manifestPort}` +
-    ` --base-dir rootfs` +
+    `cd ${shellQuote(directory)} && exec /lib64/ld-linux-x86-64.so.2 --library-path /lib/x86_64-linux-gnu` +
+    ` ./wrapper -H ${host} -D ${options.decryptPort} -M ${options.manifestPort} --base-dir rootfs` +
     (extra ? ` ${extra}` : "");
   // No double quote can survive cmd's parsing of the script, and Windows paths
   // cannot contain one, so this is the safe frame.
@@ -325,7 +327,7 @@ export async function ensureWslRuntime(options: {
   if (existing && existing.version === PREFERRED_WSL_VERSION) {
     const health = await runCommand(
       "wsl.exe",
-      ["-d", distro, "-u", "root", "--", "/bin/sh", "-c", "test -x /opt/lidra/wrapper && test -d /opt/lidra/rootfs/system && test -s /etc/passwd"],
+      ["-d", distro, "-u", "root", "--", "/bin/sh", "-c", "test -x /opt/lidra/wrapper && test -d /opt/lidra/rootfs/system && test -s /etc/passwd && test -x /lib64/ld-linux-x86-64.so.2"],
       60_000,
     );
     if (health.code === 0) {
