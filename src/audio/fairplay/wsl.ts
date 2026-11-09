@@ -164,6 +164,12 @@ function stageService(): WslSetup {
     "chmod 755 /opt/lidra/rootfs/system/bin/main /opt/lidra/rootfs/system/bin/linker64 || true",
     "mkdir -p /opt/lidra/rootfs/data/data/com.apple.android.music/files",
     "mkdir -p /root/.lidra-fp/fpdata /root/.lidra-fp/fpconfig",
+    // The wrapper builds its anisette machine-data headers from the host
+    // machine id, and minimal images do not ship one. Without it every
+    // request logs "ERROR retrieving machineData headers" and device
+    // provisioning fails (-45054). Generate once, keep forever: wiping it
+    // would re-enroll a "new device" with Apple.
+    "[ -s /etc/machine-id ] || cat /proc/sys/kernel/random/uuid | tr -d - > /etc/machine-id",
   ].join(" && ");
   const r = sh(script);
   if (r.code !== 0) {
@@ -195,7 +201,9 @@ function imageProbe(): WslSetup {
 
 /** Staged state: the image service plus its baked-in device nodes. */
 function stagedProbe(): WslSetup {
-  const r = sh("test -x /opt/lidra/wrapper && test -c /opt/lidra/rootfs/dev/urandom");
+  const r = sh(
+    "test -x /opt/lidra/wrapper && test -c /opt/lidra/rootfs/dev/urandom && test -s /etc/machine-id",
+  );
   if (r.code !== 0) {
     return { ok: false, detail: `staged service probe failed: ${r.output.slice(0, 300)}` };
   }
