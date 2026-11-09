@@ -43,10 +43,10 @@ EOF
 # its binary was linked against (Alpine is musl, so these ship alongside).
 mkdir -p "$WORK/root/opt"
 cp -a "$ROOT/vendor/wrapper/opt/lidra" "$WORK/root/opt/lidra"
-install -D -m 0755 "$ROOT/vendor/wrapper/lib64/ld-linux-x86-64.so.2" \
-  "$WORK/root/lib64/ld-linux-x86-64.so.2"
-install -D -m 0755 "$ROOT/vendor/wrapper/lib/x86_64-linux-gnu/libc.so.6" \
-  "$WORK/root/lib/x86_64-linux-gnu/libc.so.6"
+mkdir -p "$WORK/root/lib64" "$WORK/root/lib/x86_64-linux-gnu"
+cp "$ROOT/vendor/wrapper/lib64/ld-linux-x86-64.so.2" "$WORK/root/lib64/ld-linux-x86-64.so.2"
+cp "$ROOT/vendor/wrapper/lib/x86_64-linux-gnu/libc.so.6" "$WORK/root/lib/x86_64-linux-gnu/libc.so.6"
+chmod 755 "$WORK/root/lib64/ld-linux-x86-64.so.2" "$WORK/root/lib/x86_64-linux-gnu/libc.so.6"
 
 # Logins run as root; Alpine already ships the account, and the wrapper needs
 # /root to exist as a home directory.

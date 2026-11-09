@@ -138,7 +138,7 @@ jobs:
 
   sentinel:
     name: Sentinel 👁️
-    needs: [lint-code, lint-actions, test-config, test-code, build]
+    needs: [lint-code, lint-actions, test-config, test-code, runtime, build]
     if: always()
     runs-on: ubuntu-latest
     permissions: {}
@@ -153,9 +153,36 @@ jobs:
           fi
           echo "All jobs passed"
 
+  runtime:
+    name: Runtime Archive 📦
+    needs: [lint-code, lint-actions, test-config, test-code]
+    if: >-
+      always()
+      && needs.lint-code.result == 'success'
+      && needs.lint-actions.result == 'success'
+      && needs.test-config.result == 'success'
+      && needs.test-code.result == 'success'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build the Linux environment the Windows app imports
+        run: |
+          test -s vendor/wrapper/opt/lidra/wrapper
+          bash scripts/build-wsl-rootfs.sh build/wrapper-tar/wrapper-rootfs.tar.gz
+          tar tzf build/wrapper-tar/wrapper-rootfs.tar.gz > build/wrapper-tar/entries.txt
+          grep -qx './bin/sh' build/wrapper-tar/entries.txt
+          grep -qx './etc/passwd' build/wrapper-tar/entries.txt
+          grep -qx './opt/lidra/wrapper' build/wrapper-tar/entries.txt
+          du -sh build/wrapper-tar/wrapper-rootfs.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wrapper-rootfs
+          path: build/wrapper-tar/wrapper-rootfs.tar.gz
+          retention-days: 1
+
   build:
     name: Build (${{ matrix.os }}-${{ matrix.arch }})
-    needs: [lint-code, lint-actions, test-config, test-code]
+    needs: [lint-code, lint-actions, test-config, test-code, runtime]
     # always() overrides the transitive skip from version-gate on non-tag runs.
     # The success checks still block failed dependencies, which always() permits.
     if: >-
@@ -164,6 +191,7 @@ jobs:
       && needs.lint-actions.result == 'success'
       && needs.test-config.result == 'success'
       && needs.test-code.result == 'success'
+      && needs.runtime.result == 'success'
     strategy:
       fail-fast: false
       matrix:
@@ -248,20 +276,13 @@ jobs:
           # This fork has no Last.fm application secrets. Releases ship with
           # scrobbling disabled rather than failing every build job.
           LIDRA_ALLOW_MISSING_CREDENTIALS: "1"
-      # The Windows package imports a tar, and packing it here (with GNU tar on
-      # a build machine) is far more reliable than packing it on the user's
-      # Windows box at first launch.
-      - name: Build the lossless runtime archive
-        shell: bash
-        run: |
-          test -s vendor/wrapper/opt/lidra/wrapper
-          bash scripts/build-wsl-rootfs.sh build/wrapper-tar/wrapper-rootfs.tar.gz
-          # List once into a file: piping into `grep -q` closes the pipe early and
-          # makes tar fail with a write error.
-          tar tzf build/wrapper-tar/wrapper-rootfs.tar.gz > build/wrapper-tar/entries.txt
-          grep -qx './bin/sh' build/wrapper-tar/entries.txt
-          grep -qx './etc/passwd' build/wrapper-tar/entries.txt
-          grep -qx './opt/lidra/wrapper' build/wrapper-tar/entries.txt
+      # One archive, built once on Linux, so every platform packages the same
+      # environment and no runner has to create symlinks or device nodes.
+      - name: Fetch the lossless runtime archive
+        uses: actions/download-artifact@v8
+        with:
+          name: wrapper-rootfs
+          path: build/wrapper-tar
       - name: Build distributables
         run: npx electron-builder --publish never ${{ matrix.targets }}
       # A package without the runtime cannot play lossless, and it is a 50 MB
