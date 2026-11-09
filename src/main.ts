@@ -820,7 +820,7 @@ function initAudioEngine(ses: Electron.Session): AudioEngine {
   ipcMain.handle("lidra:audio-status", () => engine.status());
 
   // FairPlay backend: staged into per-app state on Linux, inside the private
-  // WSL1 distro on Windows. Setup is heavy on a cold start, so it runs after
+  // WSL2 distro on Windows. Setup is heavy on a cold start, so it runs after
   // the engine exists and never throws — without it the app plays through
   // the web player.
   void setupFairplayBackend();

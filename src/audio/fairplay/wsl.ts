@@ -1,18 +1,20 @@
 /**
- * Windows FairPlay runtime: a private WSL1 distro that runs the whole backend.
+ * Windows FairPlay runtime: a private WSL2 distro that runs the whole backend.
  *
  * The FairPlay service binary is Linux-only, so on Windows everything
  * (python supervisor + service) lives inside the LidraWrapper distro. No
  * Windows/Linux path sharing: state stays under /root/.lidra-fp and the
- * service install is staged at /opt/lidra/service from the image payload.
+ * service runs from the image payload in place at /opt/lidra.
  * WSL shares loopback with Windows, so the service ports and the
  * account-port token reader work unchanged.
  *
- * Hard lessons from earlier releases, all handled here:
- * - WSL2 needs Hyper-V/VBS and breaks on many machines -> import version 1
- *   first (pure syscall translation, no VM), fall back to 2 only if 1 fails.
- * - `wsl.exe` output is UTF-16LE or UTF-8 depending on phase of the moon.
+ * WSL version is not negotiable: the wrapper sandboxes itself with
+ * unshare(), which WSL1 does not implement (`unshare: Invalid argument`
+ * and an instant silent death). WSL2 only. Hard lessons from earlier
+ * releases, all handled here:
  * - Stale/empty imports must rebuild, never limp on (revision marker).
+ * - A fresh import needs no repair: nodes are baked into the image tar.
+ * - `wsl.exe` output is UTF-16LE or UTF-8 depending on phase of the moon.
  * - A bare failing `wsl.exe` says nothing -> write a diagnose report file.
  */
 import { spawnSync } from "node:child_process";
@@ -25,7 +27,7 @@ const wslLog = log.scope("fairplay.wsl");
 
 export const WSL_DISTRO = "LidraWrapper";
 /** Bump to force every machine to re-import the environment on upgrade. */
-export const WSL_PAYLOAD_REVISION = "2026-11-12-fairplay2";
+export const WSL_PAYLOAD_REVISION = "2026-11-12-fairplay3";
 
 export const WSL_PYTHON = "/opt/python/python3";
 export const WSL_PACKAGE_DIR = "/opt/lidra/fairplay";
@@ -121,23 +123,22 @@ function importDistro(archivePath: string): WslSetup {
   fs.mkdirSync(wslBase(), { recursive: true });
   const unregister = runWsl(["--unregister", WSL_DISTRO], 180_000);
   wslLog.info(`wsl unregister: exit ${unregister.code}`);
-  // Version 1 first: no Hyper-V, no virtual network, fewest ways to fail.
-  // Only if the host refuses v1 (rare) do we try a v2 import.
-  for (const version of ["1", "2"]) {
-    const imported = runWsl(
-      ["--import", WSL_DISTRO, distroTarget(), archivePath, "--version", version],
-      600_000,
-    );
-    if (imported.code === 0) {
-      writeRevision();
-      return { ok: true, detail: `imported ${WSL_DISTRO} (wsl${version})` };
-    }
-    wslLog.warn(`wsl import version ${version} failed: ${imported.output.slice(0, 300)}`);
+  // WSL2 only: the wrapper needs unshare(), which WSL1 does not implement.
+  // A v1 import would succeed and then die on every launch, so fail loudly
+  // instead of importing something that can never run.
+  const imported = runWsl(
+    ["--import", WSL_DISTRO, distroTarget(), archivePath, "--version", "2"],
+    600_000,
+  );
+  if (imported.code === 0) {
+    writeRevision();
+    return { ok: true, detail: `imported ${WSL_DISTRO} (wsl2)` };
   }
+  wslLog.warn(`wsl import version 2 failed: ${imported.output.slice(0, 300)}`);
   return {
     ok: false,
-    detail: "wsl --import failed for versions 1 and 2",
-    hint: "run 'wsl --install' in an admin terminal, reboot, and relaunch Lidra",
+    detail: `wsl --import failed: ${imported.output.split("\n")[0]?.slice(0, 200) || "no output"}`,
+    hint: "WSL2 needs virtualization: enable it in BIOS, run 'wsl --install' in an admin terminal, reboot, and relaunch Lidra",
   };
 }
 
@@ -147,11 +148,11 @@ function sh(script: string, timeoutMs = 120_000): { code: number; output: string
 
 /**
  * Ready the service inside the image payload, in place. The 1.6.x layout ran
- * from /opt/lidra directly, and that is what works: copying the tree needs
- * mknod for the rootfs device nodes, and WSL1 cannot create device nodes —
- * staging died there every launch with nothing staged and no error surfaced.
- * The nodes are baked into the import tar at build time (real Linux); the
- * distro is private to this machine, so session state inside it is isolated.
+ * from /opt/lidra directly, and that is what works: copying the tree would
+ * need mknod for the rootfs device nodes, which no lightweight setup can
+ * rely on. The nodes are baked into the import tar at build time (real
+ * Linux); the distro is private to this machine, so session state inside
+ * it is isolated.
  */
 function stageService(): WslSetup {
   const script = [
