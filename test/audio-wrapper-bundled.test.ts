@@ -42,8 +42,9 @@ function makePayload(directory: string): string {
 describe("the shipped payload", () => {
   it("is looked for in resources and in the repo's vendor directory", () => {
     const paths = bundledPayloadPaths("/opt/Lidra/resources", "/home/me/lidra");
-    expect(paths[0]).toBe("/opt/Lidra/resources/wrapper");
-    expect(paths[1]).toBe("/home/me/lidra/vendor/wrapper");
+    expect(paths[0]).toBe("/opt/Lidra/resources/wrapper/wrapper-rootfs.tar.gz");
+    expect(paths[1]).toBe("/opt/Lidra/resources/wrapper");
+    expect(paths[2]).toBe("/home/me/lidra/vendor/wrapper");
   });
 
   it("only accepts a tree that is complete", () => {
@@ -133,7 +134,10 @@ describe("packing for a WSL import", () => {
   it("packs a directory once and reuses the archive", async () => {
     const payloadDir = makePayload(path.join(root, "payload"));
     const target = path.join(root, "out", "wrapper-payload.tar.gz");
-    const run = vi.fn(async () => {
+    const run = vi.fn(async (_command: string, args: string[]) => {
+      if (args[0] === "tzf") {
+        return { code: 0, stdout: "bin/sh\nbin/busybox\netc/passwd\nopt/lidra/wrapper\n", stderr: "" };
+      }
       fs.mkdirSync(path.dirname(target), { recursive: true });
       fs.writeFileSync(target, "packed");
       return { code: 0, stdout: "", stderr: "" };
@@ -145,7 +149,8 @@ describe("packing for a WSL import", () => {
       runImpl: run,
     });
     expect(packed).toBe(target);
-    expect(run).toHaveBeenCalledTimes(1);
+    const packCalls = (): number => run.mock.calls.filter(([, args]) => (args as string[])[0] === "czf").length;
+    expect(packCalls()).toBe(1);
 
     const again = await packPayloadForImport({
       payload: { kind: "directory", path: payloadDir },
@@ -153,7 +158,7 @@ describe("packing for a WSL import", () => {
       runImpl: run,
     });
     expect(again).toBe(target);
-    expect(run).toHaveBeenCalledTimes(1);
+    expect(packCalls()).toBe(1);
   });
 
   it("re-packs when the payload changed since the archive was made", async () => {
@@ -167,14 +172,15 @@ describe("packing for a WSL import", () => {
     const payload = { kind: "directory" as const, path: payloadDir };
 
     await packPayloadForImport({ payload, targetPath: target, runImpl: run });
-    expect(run).toHaveBeenCalledTimes(1);
+    const packCalls = (): number => run.mock.calls.filter(([, args]) => (args as string[])[0] === "czf").length;
+    expect(packCalls()).toBe(1);
 
     // A newer build ships a different wrapper binary.
     const wrapper = path.join(payloadDir, "opt/lidra/wrapper");
     fs.writeFileSync(wrapper, "a different payload from a newer build");
 
     await packPayloadForImport({ payload, targetPath: target, runImpl: run });
-    expect(run).toHaveBeenCalledTimes(2);
+    expect(packCalls()).toBe(2);
   });
 
   it("passes an existing archive straight through", async () => {

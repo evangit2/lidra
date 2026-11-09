@@ -248,14 +248,19 @@ jobs:
           # This fork has no Last.fm application secrets. Releases ship with
           # scrobbling disabled rather than failing every build job.
           LIDRA_ALLOW_MISSING_CREDENTIALS: "1"
-      # The FairPlay runtime ships inside every package; it is committed under
-      # vendor/wrapper and copied in by electron-builder.
-      - name: Check the bundled lossless runtime is present
+      # The Windows package imports a tar, and packing it here (with GNU tar on
+      # a build machine) is far more reliable than packing it on the user's
+      # Windows box at first launch.
+      - name: Build the lossless runtime archive
         shell: bash
         run: |
-          # Windows checkouts carry no execute bit, so only check it is there.
           test -s vendor/wrapper/opt/lidra/wrapper
-          du -sh vendor/wrapper
+          mkdir -p build/wrapper-tar
+          tar czf build/wrapper-tar/wrapper-rootfs.tar.gz -C vendor/wrapper bin etc lib lib64 opt usr
+          tar tzf build/wrapper-tar/wrapper-rootfs.tar.gz | grep -qx 'bin/sh'
+          tar tzf build/wrapper-tar/wrapper-rootfs.tar.gz | grep -qx 'etc/passwd'
+          tar tzf build/wrapper-tar/wrapper-rootfs.tar.gz | grep -qx 'opt/lidra/wrapper'
+          du -sh build/wrapper-tar/wrapper-rootfs.tar.gz
       - name: Build distributables
         run: npx electron-builder --publish never ${{ matrix.targets }}
       # A package without the runtime cannot play lossless, and it is a 50 MB

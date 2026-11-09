@@ -9,3 +9,6 @@ release/
 # The build generates this file with scripts/inject-lastfm-credentials.cjs.
 # It contains the shared Last.fm API secret and must never be committed.
 assets/lastfm-credentials.json
+
+# runtime archive, built by the packaging step
+build/wrapper-tar/

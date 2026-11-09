@@ -1,7 +1,7 @@
 {
   "name": "lidra",
   "productName": "Lidra",
-  "version": "1.5.10",
+  "version": "1.6.0",
   "description": "Lidra — an elegant Apple Music desktop client with a native high-quality audio pipeline, forked from Lidra.",
   "main": "dist/main.js",
   "scripts": {
@@ -80,12 +80,6 @@
       "node_modules/ffmpeg-static/**"
     ],
     "icon": "build/icon.png",
-    "extraResources": [
-      {
-        "from": "vendor/wrapper",
-        "to": "wrapper"
-      }
-    ],
     "files": [
       "dist/**/*",
       "assets/**/*",
@@ -136,7 +130,13 @@
           }
         }
       },
-      "syncDesktopName": true
+      "syncDesktopName": true,
+      "extraResources": [
+        {
+          "from": "vendor/wrapper",
+          "to": "wrapper"
+        }
+      ]
     },
     "protocols": [
       {
@@ -212,6 +212,12 @@
     },
     "afterPack": "build/afterPack.cjs",
     "mac": {
+      "extraResources": [
+        {
+          "from": "vendor/wrapper",
+          "to": "wrapper"
+        }
+      ],
       "target": [
         "dmg"
       ],
@@ -250,7 +256,13 @@
       "target": [
         "nsis"
       ],
-      "icon": "build/icon.ico"
+      "icon": "build/icon.ico",
+      "extraResources": [
+        {
+          "from": "build/wrapper-tar/wrapper-rootfs.tar.gz",
+          "to": "wrapper/wrapper-rootfs.tar.gz"
+        }
+      ]
     },
     "nsis": {
       "include": "build/installer.nsh",

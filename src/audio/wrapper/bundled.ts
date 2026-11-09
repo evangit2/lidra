@@ -41,6 +41,9 @@ const REQUIRED = [
  */
 export function bundledPayloadPaths(resourcesPath: string, appPath: string): string[] {
   return [
+    // A packed archive wins when the installer ships one: it was built on the
+    // build machine, so nothing has to be packed correctly on the user's.
+    path.join(resourcesPath, PAYLOAD_DIR, "wrapper-rootfs.tar.gz"),
     path.join(resourcesPath, PAYLOAD_DIR),
     path.join(appPath, "vendor", PAYLOAD_DIR),
     path.join(appPath, "..", "vendor", PAYLOAD_DIR),
@@ -239,6 +242,18 @@ export async function packPayloadForImport(options: {
     .filter((entry) => fs.statSync(path.join(options.payload.path, entry)).isDirectory());
   const packed = await runCommand("tar", ["czf", options.targetPath, "-C", options.payload.path, ...entries]);
   if (packed.code !== 0) return null;
+  // Prove the archive holds what the environment needs before anything imports
+  // it: an archive that quietly lost bin/ costs a whole troubleshooting cycle.
+  const listing = await runCommand("tar", ["tzf", options.targetPath]);
+  const names = listing.stdout;
+  if (
+    listing.code !== 0 ||
+    !/\b(bin\/sh|bin\/busybox)\b/.test(names) ||
+    !names.includes("etc/passwd") ||
+    !names.includes("opt/lidra/wrapper")
+  ) {
+    return null;
+  }
   try {
     fs.writeFileSync(stampPath, stamp, "utf-8");
   } catch {
