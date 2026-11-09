@@ -72,7 +72,7 @@ describe("fairplay backend", () => {
       "--",
       "env",
       "PYTHONPATH=/opt/lidra/fairplay",
-      "FPDECRYPT_SERVICE=/opt/lidra/service",
+      "FPDECRYPT_SERVICE=/opt/lidra",
       "XDG_DATA_HOME=/root/.lidra-fp/fpdata",
       "XDG_CONFIG_HOME=/root/.lidra-fp/fpconfig",
       "FPDECRYPT_PORT_DECRYPT=10120",

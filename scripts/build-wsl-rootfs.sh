@@ -87,6 +87,17 @@ chmod 755 "$WORK/root/opt/lidra/wrapper"
 mkdir -p "$WORK/root/opt/lidra/rootfs/dev" "$WORK/root/opt/lidra/rootfs/proc" "$WORK/root/opt/lidra/rootfs/tmp"
 chmod 1777 "$WORK/root/opt/lidra/rootfs/tmp"
 chmod 755 "$WORK/root/opt/lidra/rootfs/dev" "$WORK/root/opt/lidra/rootfs/proc"
+# The wrapper opens rootfs/dev/urandom and dies with Permission denied
+# without it. WSL1 cannot create device nodes, so bake the real ones here —
+# the service runs from this image in place.
+if ! sudo -n true 2>/dev/null; then
+  echo "need passwordless sudo (mknod for the runtime device nodes)" >&2
+  exit 1
+fi
+sudo -n mknod -m 666 "$WORK/root/opt/lidra/rootfs/dev/null" c 1 3
+sudo -n mknod -m 666 "$WORK/root/opt/lidra/rootfs/dev/zero" c 1 5
+sudo -n mknod -m 666 "$WORK/root/opt/lidra/rootfs/dev/random" c 1 8
+sudo -n mknod -m 666 "$WORK/root/opt/lidra/rootfs/dev/urandom" c 1 9
 
 mkdir -p "$(dirname "$OUT")"
 tar czf "$OUT" -C "$WORK/root" .

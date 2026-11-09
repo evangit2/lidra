@@ -118,7 +118,9 @@ export function buildEnv(paths: FairplayPaths, python: string): FairplayEnv {
 export function buildWslEnv(wsl: FairplayWsl): FairplayEnv {
   const dataDir = "/root/.lidra-fp/fpdata";
   const configDir = "/root/.lidra-fp/fpconfig";
-  const serviceDir = "/opt/lidra/service";
+  // The service runs from the image payload in place (/opt/lidra): WSL1
+  // cannot create the device nodes a staged copy would need.
+  const serviceDir = "/opt/lidra";
   return {
     PYTHON: wsl.python,
     packageDir: "/opt/lidra/fairplay",

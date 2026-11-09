@@ -25,11 +25,10 @@ const wslLog = log.scope("fairplay.wsl");
 
 export const WSL_DISTRO = "LidraWrapper";
 /** Bump to force every machine to re-import the environment on upgrade. */
-export const WSL_PAYLOAD_REVISION = "2026-11-12-fairplay1";
+export const WSL_PAYLOAD_REVISION = "2026-11-12-fairplay2";
 
 export const WSL_PYTHON = "/opt/python/python3";
 export const WSL_PACKAGE_DIR = "/opt/lidra/fairplay";
-const WSL_SERVICE_DIR = "/opt/lidra/service";
 
 export interface WslSetup {
   ok: boolean;
@@ -146,22 +145,20 @@ function sh(script: string, timeoutMs = 120_000): { code: number; output: string
   return runWsl(["-d", WSL_DISTRO, "-u", "root", "--", "/bin/sh", "-c", script], timeoutMs);
 }
 
-/** Stage the service from the image payload (fresh copy, no account state). */
+/**
+ * Ready the service inside the image payload, in place. The 1.6.x layout ran
+ * from /opt/lidra directly, and that is what works: copying the tree needs
+ * mknod for the rootfs device nodes, and WSL1 cannot create device nodes —
+ * staging died there every launch with nothing staged and no error surfaced.
+ * The nodes are baked into the import tar at build time (real Linux); the
+ * distro is private to this machine, so session state inside it is isolated.
+ */
 function stageService(): WslSetup {
   const script = [
     "set -e",
-    `rm -rf ${WSL_SERVICE_DIR}`,
-    `mkdir -p ${WSL_SERVICE_DIR}`,
-    `cp -a /opt/lidra/wrapper ${WSL_SERVICE_DIR}/wrapper`,
-    `cp -a /opt/lidra/rootfs ${WSL_SERVICE_DIR}/rootfs`,
-    `chmod 755 ${WSL_SERVICE_DIR}/wrapper`,
-    `chmod 755 ${WSL_SERVICE_DIR}/rootfs/system/bin/main ${WSL_SERVICE_DIR}/rootfs/system/bin/linker64 || true`,
-    "mkdir -p /opt/lidra/service/rootfs/data/data/com.apple.android.music/files",
-    // Device nodes cannot ride the import tar, and the wrapper stops with
-    // "Permission denied" when rootfs/dev/urandom is missing. Staging runs
-    // as root, so create them here on every launch (idempotent).
-    `mkdir -p ${WSL_SERVICE_DIR}/rootfs/dev`,
-    `for spec in "null c 1 3" "zero c 1 5" "random c 1 8" "urandom c 1 9"; do set -- $spec; [ -c ${WSL_SERVICE_DIR}/rootfs/dev/$1 ] || mknod -m 666 ${WSL_SERVICE_DIR}/rootfs/dev/$1 $2 $3 $4; done`,
+    "chmod 755 /opt/lidra/wrapper",
+    "chmod 755 /opt/lidra/rootfs/system/bin/main /opt/lidra/rootfs/system/bin/linker64 || true",
+    "mkdir -p /opt/lidra/rootfs/data/data/com.apple.android.music/files",
     "mkdir -p /root/.lidra-fp/fpdata /root/.lidra-fp/fpconfig",
   ].join(" && ");
   const r = sh(script);
@@ -192,9 +189,9 @@ function imageProbe(): WslSetup {
   return { ok: true, detail: "runtime image healthy" };
 }
 
-/** Staged state: the service copy plus the device nodes staging creates. */
+/** Staged state: the image service plus its baked-in device nodes. */
 function stagedProbe(): WslSetup {
-  const r = sh("test -x /opt/lidra/service/wrapper && test -c /opt/lidra/service/rootfs/dev/urandom");
+  const r = sh("test -x /opt/lidra/wrapper && test -c /opt/lidra/rootfs/dev/urandom");
   if (r.code !== 0) {
     return { ok: false, detail: `staged service probe failed: ${r.output.slice(0, 300)}` };
   }
@@ -212,7 +209,7 @@ export function diagnoseWslRuntime(): WslDiagnoseEntry[] {
   entries.push({ step: "wsl --status", code: status.code, output: status.output.slice(0, 1000) });
   const list = runWsl(["--list", "--verbose"], 30_000);
   entries.push({ step: "wsl --list", code: list.code, output: list.output.slice(0, 1000) });
-  const probe = sh("uname -a; cat /etc/os-release 2>/dev/null | head -3; ls /opt/lidra 2>&1; ls -l /opt/lidra/service/rootfs/dev 2>&1 | head -8", 60_000);
+  const probe = sh("uname -a; cat /etc/os-release 2>/dev/null | head -3; ls /opt/lidra 2>&1; ls -l /opt/lidra/rootfs/dev 2>&1 | head -8", 60_000);
   entries.push({ step: "distro probe", code: probe.code, output: probe.output.slice(0, 1500) });
   return entries;
 }
