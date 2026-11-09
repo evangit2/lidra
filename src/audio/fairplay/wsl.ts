@@ -171,21 +171,34 @@ function stageService(): WslSetup {
   return { ok: true, detail: "service staged" };
 }
 
-function healthProbe(): WslSetup {
+/**
+ * Image state only: what the import tar provides. deliberately excludes the
+ * staged service copy — staging runs after the probe, so requiring staged
+ * state here would fail every fresh import and rebuild forever.
+ */
+function imageProbe(): WslSetup {
   const r = sh(
     [
       "test -x /opt/python/python3",
       "test -f /opt/lidra/fairplay/fairplay_decrypter/cli.py",
       "test -x /opt/lidra/wrapper",
       "test -f /opt/lidra/rootfs/system/bin/main",
-      "test -c /opt/lidra/service/rootfs/dev/urandom",
       "/opt/python/python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)'",
     ].join(" && "),
   );
   if (r.code !== 0) {
-    return { ok: false, detail: `runtime health probe failed: ${r.output.slice(0, 300)}` };
+    return { ok: false, detail: `runtime image probe failed: ${r.output.slice(0, 300)}` };
   }
-  return { ok: true, detail: "runtime healthy" };
+  return { ok: true, detail: "runtime image healthy" };
+}
+
+/** Staged state: the service copy plus the device nodes staging creates. */
+function stagedProbe(): WslSetup {
+  const r = sh("test -x /opt/lidra/service/wrapper && test -c /opt/lidra/service/rootfs/dev/urandom");
+  if (r.code !== 0) {
+    return { ok: false, detail: `staged service probe failed: ${r.output.slice(0, 300)}` };
+  }
+  return { ok: true, detail: "service staged and keyed" };
 }
 
 /**
@@ -254,17 +267,19 @@ export async function ensureWslRuntime(opts: {
     if (!imported.ok) return imported;
     say(imported.detail);
   }
-  const probe = healthProbe();
+  const probe = imageProbe();
   if (!probe.ok) {
     // A stale or half-imported environment: rebuild once from the archive.
     if (!opts.archivePath) return probe;
     say("runtime looks stale; rebuilding it once…");
     const imported = importDistro(opts.archivePath);
     if (!imported.ok) return imported;
-    const retry = healthProbe();
+    const retry = imageProbe();
     if (!retry.ok) return retry;
   }
   const staged = stageService();
   if (!staged.ok) return staged;
+  const ready = stagedProbe();
+  if (!ready.ok) return ready;
   return { ok: true, detail: "WSL runtime ready" };
 }
