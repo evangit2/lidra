@@ -341,7 +341,9 @@ jobs:
   publish-snap:
     name: Publish Snap 📦
     needs: [sentinel, build]
-    if: startsWith(github.ref, 'refs/tags/') && needs.sentinel.result == 'success' && needs.build.result == 'success'
+    # Publishing needs a store token that this fork does not carry; opt in with a
+    # repository variable instead of failing every tagged release.
+    if: startsWith(github.ref, 'refs/tags/') && needs.sentinel.result == 'success' && needs.build.result == 'success' && vars.PUBLISH_SNAP == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -393,6 +395,9 @@ jobs:
   nix-hash:
     name: Nix Hash 🔑
     needs: [release]
+    # Opening the bump PR needs "allow GitHub Actions to create pull requests",
+    # which is off here; the hashes still get logged, so do not fail the release.
+    continue-on-error: true
     runs-on: ubuntu-latest
     permissions:
       contents: write
