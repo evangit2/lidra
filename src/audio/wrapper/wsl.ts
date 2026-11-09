@@ -29,7 +29,7 @@ export const PREFERRED_WSL_VERSION = 2;
  * release is rebuilt instead of reused. An imported root without `/etc/passwd`
  * cannot resolve `-u root`, which WSL reports as WSL_E_USER_NOT_FOUND.
  */
-export const WSL_PAYLOAD_REVISION = "2026-11-09b-passwd-marker";
+export const WSL_PAYLOAD_REVISION = "2026-11-09c-rootfs";
 
 /** Name of the Linux environment Lidra imports for itself. */
 export const WSL_DISTRO = "LidraWrapper";
@@ -227,7 +227,7 @@ export async function diagnoseWslRuntime(options: {
     {
       step: "wrapper present",
       command: "wsl.exe",
-      args: ["-d", distro, "-u", "root", "--", "/bin/sh", "-c", `ls -l ${WSL_WRAPPER_DIR}/wrapper ${WSL_WRAPPER_DIR}/rootfs/system 2>&1 | head -6`],
+      args: ["-d", distro, "-u", "root", "--", "/bin/sh", "-c", `ls -ld /bin/sh /etc/passwd ${WSL_WRAPPER_DIR}/wrapper ${WSL_WRAPPER_DIR}/rootfs/system 2>&1 | head -8`],
     },
     {
       step: "wrapper starts",
@@ -304,7 +304,10 @@ export async function ensureWslRuntime(options: {
     }
   }
 
-  const installDir = installDirForMarker;
+  // A fresh directory per payload revision: `wsl --import` writes its disk image
+  // into this folder, and leftovers from an older import can survive a rebuild.
+  const installDir = path.join(installDirForMarker, WSL_PAYLOAD_REVISION);
+  fs.rmSync(installDir, { recursive: true, force: true });
   fs.mkdirSync(installDir, { recursive: true });
 
   // An older release could import an empty environment (or fail halfway), and a

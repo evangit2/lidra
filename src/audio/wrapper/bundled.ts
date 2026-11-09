@@ -234,7 +234,10 @@ export async function packPayloadForImport(options: {
     // No usable archive yet.
   }
   fs.mkdirSync(path.dirname(options.targetPath), { recursive: true });
-  const packed = await runCommand("tar", ["czf", options.targetPath, "-C", options.payload.path, "."]);
+  const entries = fs
+    .readdirSync(options.payload.path)
+    .filter((entry) => fs.statSync(path.join(options.payload.path, entry)).isDirectory());
+  const packed = await runCommand("tar", ["czf", options.targetPath, "-C", options.payload.path, ...entries]);
   if (packed.code !== 0) return null;
   try {
     fs.writeFileSync(stampPath, stamp, "utf-8");
