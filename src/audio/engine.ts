@@ -19,7 +19,8 @@ import type { FairplayEnv } from "./fairplay/service";
 const engineLog = log.scope("audio.engine");
 
 export interface AudioEngineOptions {
-  fairplay: FairplayEnv;
+  /** Backend env, read per track: it is staged asynchronously after startup. */
+  getFairplay: () => FairplayEnv | null;
   cacheRoot: string;
   getStorefront: () => string;
   getPreference: () => QualityTier | null;
@@ -161,6 +162,8 @@ export class AudioEngine {
     if (this.preparation) await this.preparation;
 
     const task = (async () => {
+      const backend = this.options.getFairplay();
+      if (!backend) throw new Error("high-quality backend is unavailable on this platform");
       const asset: TrackAsset = {
         id: appleId,
         storefront: this.options.getStorefront().toLowerCase(),
@@ -174,7 +177,7 @@ export class AudioEngine {
         preference,
         cacheRoot: this.options.cacheRoot,
         ffmpegPath: this.options.ffmpegPath,
-        fairplay: this.options.fairplay,
+        fairplay: backend,
         spatial: this.options.getSpatial?.() ?? "bed",
       });
       try {
@@ -212,7 +215,9 @@ export class AudioEngine {
 
   /** List the renditions for a song without downloading it. */
   async qualities(appleId: string): Promise<AudioVariant[]> {
-    return listQualities(this.options.fairplay, {
+    const fp = this.options.getFairplay();
+    if (!fp) throw new Error("high-quality backend is unavailable on this platform");
+    return listQualities(fp, {
       id: appleId,
       storefront: this.options.getStorefront().toLowerCase(),
       name: appleId,

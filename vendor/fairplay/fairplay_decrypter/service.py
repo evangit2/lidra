@@ -63,6 +63,11 @@ def start(creds: str | None = None, extra_args: list[str] | None = None,
             "-D", str(p["decrypt"]), "-M", str(p["manifest"]),
             "-A", str(p["account"]), "-K", str(p["key"]),
             "-B", str(base)]
+    if os.environ.get("FPDECRYPT_NO_SUDO") == "1":
+        # Hosts with unprivileged user namespaces can run the wrapper
+        # directly; the mounts it needs do not require root there.
+        args.pop(0)
+        args.pop(0)
     if creds:
         args += ["-L", creds]
     args += ["-F"]

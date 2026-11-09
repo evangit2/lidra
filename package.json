@@ -70,6 +70,7 @@
       "assets/settings.css",
       "assets/settings.js",
       "assets/about.html",
+ "assets/fairplayLogin.html",
       "assets/authFrameFix.js",
       "assets/authStyleFix.css",
       "assets/lidra-mark.png",
@@ -133,8 +134,12 @@
       "syncDesktopName": true,
       "extraResources": [
         {
-          "from": "vendor/wrapper",
-          "to": "wrapper"
+          "from": "vendor/wrapper/opt/lidra",
+          "to": "fairplay-payload"
+        },
+        {
+          "from": "vendor/fairplay",
+          "to": "fairplay"
         }
       ]
     },
@@ -212,12 +217,6 @@
     },
     "afterPack": "build/afterPack.cjs",
     "mac": {
-      "extraResources": [
-        {
-          "from": "vendor/wrapper",
-          "to": "wrapper"
-        }
-      ],
       "target": [
         "dmg"
       ],

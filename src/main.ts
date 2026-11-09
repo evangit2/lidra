@@ -4,15 +4,11 @@ import {
   dialog,
   ipcMain,
   Menu,
-  safeStorage,
   session,
   Tray,
   webFrameMain,
 } from "electron";
-import { spawn } from "child_process";
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import fs from "fs";
-import os from "os";
 import path from "path";
 import log from "electron-log/main";
 import { AUTH_FIX_TOKEN, PASSKEY_CONTAINER_SELECTORS } from "./authFrame";
@@ -76,49 +72,36 @@ import {
 import { contentReadyProbeScript } from "./contentReady";
 import { initNotificationProbe } from "./notify";
 import { AudioEngine } from "./audio/engine";
-import { CredentialStore } from "./audio/tokens";
-import { KeyCache, createKeyProvider } from "./audio/keys";
-import { createWidevineProvider } from "./audio/widevine/provider";
-import { webPlaybackMaster } from "./audio/webplayback";
-import { WrapperService, isListening } from "./audio/wrapper/service";
 import {
-  buildWslCommand,
-  ensureWslRuntime,
+  account as fairplayAccount,
+  buildEnv as buildFairplayEnv,
+  buildWslEnv,
+  codeFileFor,
+  findPackageDir,
+  findPython,
+  isServiceInstall,
+  login as fairplayLoginCli,
+  stageRuntime as stageFairplayRuntime,
+  status as fairplayStatus,
+  type FairplayEnv,
+} from "./audio/fairplay/service";
+import {
   diagnoseWslRuntime,
-  isWindowsWrapperCommand,
-  runtimeArchiveCandidates,
-  WSL_PAYLOAD_REVISION as payloadRevision,
-} from "./audio/wrapper/wsl";
-import { hostPathForWrapper, readWrapperSession, wrapperBaseDir } from "./audio/wrapper/session";
-import {
-  buildBundledCommand,
-  bundledPayloadPaths,
-  ensureBundledRuntime,
-  findBundledPayload,
-  packPayloadForImport,
-  passwordlessSudo,
-} from "./audio/wrapper/bundled";
-import { dismissTwoFactorPrompt, showTwoFactorPrompt } from "./twoFactorWindow";
+  ensureWslRuntime,
+  writeDiagnoseReport,
+  WSL_DISTRO,
+  WSL_PAYLOAD_REVISION,
+  WSL_PYTHON,
+} from "./audio/fairplay/wsl";
+import { runFairplayLogin } from "./fairplayLoginWindow";
 import { initAudioBridge } from "./audio/bridge";
 import { findFfmpeg } from "./audio/transcode";
 import {
-  getAudioDecryptorService,
-  getAudioWrapperAutostart,
-  getAudioWrapperCommand,
-  setAudioWrapperCommand,
   getAudioEnabled,
   getAudioEmeShim,
   getAudioFfmpegPath,
-  getAudioKeyService,
-  getAudioKeyToken,
-  getAudioKeyTransport,
-  getAudioManifestService,
   getAudioQuality,
-  getAudioRememberLogin,
   getAudioSpatial,
-  getAudioWidevineDevice,
-  getAudioWrapperLogin,
-  setAudioWrapperLogin,
   getStorefront as getAudioStorefront,
 } from "./config";
 import { errorMessage, liveWebContents, runSteps } from "./utils";
@@ -495,176 +478,249 @@ function publishQuality(payload: {
   });
 }
 
-let wrapperService: WrapperService | null = null;
+/** Vendored FairPlay backend environment. Null on macOS, where the Linux service cannot run. */
+let fairplayEnv: FairplayEnv | null = null;
+/** Guards the "no key" login prompt so one playback failure opens one window. */
+let fairplayLoginOpen = false;
+/** The no-key prompt fires once per launch; later failures only touch the pill. */
+let fairplayAutoPrompted = false;
 
-/**
- * Write the one-time 2FA code where the wrapper looks for it. The wrapper reads
- * `<base-dir>/2fa.txt` relative to its own rootfs, so the path comes from the
- * configured command's directory.
- */
-async function writeWrapperCode(code: string): Promise<void> {
-  const command = activeWrapperCommand ?? getAudioWrapperCommand();
-  const match = /(?:cd\s+([^&]+?)\s*&&)/.exec(command);
-  const root = hostPathForWrapper(match ? expandWrapperCommand(match[1]!.trim()) : os.homedir());
-  const path2fa = path.join(root, "rootfs/data/data/com.apple.android.music/files/2fa.txt");
-  try {
-    fs.mkdirSync(path.dirname(path2fa), { recursive: true, mode: 0o700 });
-    fs.writeFileSync(path2fa, code, { mode: 0o600 });
-  } catch {
-    // Root-owned rootfs: fall back to sudo so the file lands where the wrapper looks.
-    await new Promise<void>((resolve) => {
-      const child = spawn("sudo", ["-n", "sh", "-c", `printf '%s' '${code.replace(/'/g, `'\\''`)}' > '${path2fa}'`], {
-        stdio: "ignore",
-      });
-      child.once("exit", () => resolve());
-      child.once("error", () => resolve());
-    });
-  }
-}
-
-/** Expand `~` and `$HOME` in the configured wrapper command line. */
-function expandWrapperCommand(command: string): string {
-  const home = os.homedir();
-  return command.replace(/^~(?=$|\/)/, home).replace(/\$\{?HOME\}?/g, home);
-}
-
-/** Does the configured line point at a wrapper binary that is actually there? */
-function configuredWrapperExists(command: string): boolean {
-  if (!command) return false;
-  const match = /(?:^|&&|;|["'])\s*cd\s+([^&;]+)/.exec(command);
-  const directory = match
-    ? expandWrapperCommand(match[1]!.trim().replace(/^["']|["']$/g, ""))
-    : path.dirname(command);
-  return (
-    fs.existsSync(path.join(directory, "wrapper")) ||
-    fs.existsSync(path.join(directory, "opt", "lidra", "wrapper"))
-  );
-}
-
-/**
- * Bring up the runtime that ships inside the package, for a machine that has no
- * wrapper installed. The payload is unpacked into the app's data directory once
- * and then started through its own glibc loader, so the host's libc version does
- * not matter.
- */
-async function prepareBundledWrapper(
-  wrapper: WrapperService,
-  decryptorAddress: string,
-  manifestAddress: string,
-): Promise<void> {
-  const portOf = (address: string, fallback: number): number => {
-    const candidate = Number.parseInt(address.slice(address.lastIndexOf(":") + 1), 10);
-    return Number.isInteger(candidate) ? candidate : fallback;
-  };
-  const setup = await ensureBundledRuntime({
-    payloadPaths: bundledPayloadPaths(process.resourcesPath, app.getAppPath()),
-    installDir: path.join(app.getPath("userData"), "wrapper-runtime"),
-    onProgress: (message: string) => mainLog.info(`wrapper setup: ${message}`),
+/** True when `sudo -n true` succeeds (the service needs mounts on Linux). */
+async function passwordlessSudo(): Promise<boolean> {
+  const { execFile } = await import("node:child_process");
+  return new Promise((resolve) => {
+    execFile("sudo", ["-n", "true"], (error) => resolve(!error));
   });
-  if (!setup.ok || !setup.wrapperDir) {
-    mainLog.error(`lossless is unavailable: ${setup.detail}${setup.hint ? ` — ${setup.hint}` : ""}`);
-    return;
+}
+
+/** Payload candidates: packaged resources first, source tree second. */
+function fairplayPayloadCandidates(): string[] {
+  const roots = [process.resourcesPath, app.getAppPath()];
+  const out: string[] = [];
+  for (const root of roots) {
+    out.push(path.join(root, "fairplay-payload"));
+    out.push(path.join(root, "vendor", "wrapper", "opt", "lidra"));
   }
-  // The wrapper maps user ids and chroots, which needs root; fall back to the
-  // plain launch on hosts that allow unprivileged user namespaces.
-  const sudo = await passwordlessSudo();
-  activeWrapperCommand = buildBundledCommand({
-    wrapperDir: setup.wrapperDir,
-    decryptPort: portOf(decryptorAddress, 10020),
-    manifestPort: portOf(manifestAddress, 20020),
-    sudo,
-  });
-  wrapper.setCommand(activeWrapperCommand);
-  setAudioWrapperCommand(activeWrapperCommand);
-  const status = await wrapper.start();
-  mainLog.info(
-    `wrapper ${status.state}${status.detail ? ` (${status.detail})` : ""}${sudo ? "" : " [no sudo]"}`,
-  );
+  return out;
+}
+
+function findServicePayload(): string | null {
+  for (const dir of fairplayPayloadCandidates()) {
+    if (isServiceInstall(dir)) return dir;
+  }
+  return null;
 }
 
 /**
- * Bring up the Windows lossless runtime: import the payload that ships with the
- * app into its own version 1 environment, then let the wrapper service start it
- * like any other host. Every failure is logged with the action it needs.
+ * Linux: stage the shipped service payload into writable per-app state and
+ * build the backend environment. No sudo on userns hosts.
  */
-async function prepareWindowsWrapper(
-  wrapper: WrapperService,
-  decryptorAddress: string,
-  manifestAddress: string,
-): Promise<void> {
-  const portOf = (address: string, fallback: number): number => {
-    const candidate = Number.parseInt(address.slice(address.lastIndexOf(":") + 1), 10);
-    return Number.isInteger(candidate) ? candidate : fallback;
-  };
+async function setupFairplayLinux(): Promise<FairplayEnv | null> {
+  const packageDir = findPackageDir(process.resourcesPath, app.getAppPath());
+  if (!packageDir) {
+    mainLog.error("fairplay backend missing from the package");
+    return null;
+  }
+  const python = findPython();
+  if (!python) {
+    mainLog.error("python3 not found: install python3 for high-quality playback");
+    return null;
+  }
+  const env = buildFairplayEnv(
+    { packageDir, stateDir: path.join(app.getPath("userData"), "fairplay") },
+    python,
+  );
+  if (!env.serviceDir) {
+    const payload = findServicePayload();
+    if (!payload) {
+      mainLog.error("fairplay service payload missing from the package");
+      return null;
+    }
+    try {
+      const staged = stageFairplayRuntime(payload, env);
+      env.serviceDir = staged;
+    } catch (error) {
+      mainLog.error(`fairplay staging failed: ${errorMessage(error)}`);
+      return null;
+    }
+  }
+  if (!(await passwordlessSudo())) {
+    mainLog.info("no passwordless sudo; starting the service without it");
+    env.noSudo = true;
+  }
+  return env;
+}
+
+/** Windows: everything runs inside the private WSL distro. */
+async function setupFairplayWindows(): Promise<FairplayEnv | null> {
   publishQuality({
-    label: "Preparing lossless",
+    label: "Preparing high-quality audio",
     verdict: "ok",
-    detail: "unpacking the wrapper this build ships with — first run only, a minute or two",
+    detail: "importing the Linux runtime this build ships with — first run only, a minute or two",
   });
-  const payload = findBundledPayload(bundledPayloadPaths(process.resourcesPath, app.getAppPath()));
-  const packed = payload
-    ? await packPayloadForImport({
-        payload,
-        targetPath: path.join(app.getPath("userData"), "wrapper-payload.tar.gz"),
-      })
-    : null;
+  const candidates = [
+    path.join(process.resourcesPath, "wrapper", "wrapper-rootfs.tar.gz"),
+    path.join(app.getAppPath(), "build", "wrapper-tar", "wrapper-rootfs.tar.gz"),
+  ];
+  const archive = candidates.find((p) => {
+    try {
+      return fs.statSync(p).size > 1_000_000;
+    } catch {
+      return false;
+    }
+  });
   const setup = await ensureWslRuntime({
-    archivePaths: packed ? [packed] : runtimeArchiveCandidates(process.resourcesPath, app.getAppPath()),
-    onProgress: (message: string) => mainLog.info(`wrapper setup: ${message}`),
+    archivePath: archive ?? null,
+    onProgress: (message: string) => mainLog.info(`fairplay setup: ${message}`),
   });
   if (!setup.ok) {
-    mainLog.error(
-      `lossless on Windows is unavailable: ${setup.detail}` + (setup.hint ? ` — ${setup.hint}` : ""),
-    );
-    publishQuality({
-      label: "Lossless setup needed",
-      detail: setup.hint ? `${setup.detail} — ${setup.hint}` : setup.detail,
-      verdict: "mismatch",
+    mainLog.error(`high-quality audio is unavailable: ${setup.detail}${setup.hint ? ` — ${setup.hint}` : ""}`);
+    publishQuality({ label: "High-quality setup needed", detail: setup.hint ? `${setup.detail} — ${setup.hint}` : setup.detail, verdict: "mismatch" });
+    return null;
+  }
+  mainLog.info(`fairplay setup: ${setup.detail} (payload ${WSL_PAYLOAD_REVISION}, distro ${WSL_DISTRO})`);
+  return buildWslEnv({ distro: WSL_DISTRO, python: WSL_PYTHON });
+}
+
+/**
+ * Adopt the backend's store-services session for the web player.
+ *
+ * A media-user-token is what music.apple.com uses for a signed-in session, so
+ * a single Apple ID entry (the FairPlay login) is enough for both the audio
+ * pipeline and the UI. Returns true when a cookie was written.
+ */
+async function applyFairplaySession(ses: Electron.Session): Promise<boolean> {
+  if (!fairplayEnv) return false;
+  let account;
+  try {
+    account = await fairplayAccount(fairplayEnv);
+  } catch {
+    return false;
+  }
+  // Replace a stale value, and leave an identical one alone. Keeping whatever
+  // cookie was already there meant an expired session kept the player on
+  // previews even after a fresh sign-in.
+  const existing = await ses.cookies.get({ name: "media-user-token" });
+  if (existing.some((cookie) => cookie.value === account.music_token)) {
+    mainLog.info("fairplay session: player already carries it");
+    return false;
+  }
+  mainLog.info(
+    `fairplay session: adopting token ${account.music_token.slice(0, 8)}... (had ${existing.length})`,
+  );
+  for (const url of ["https://music.apple.com/", "https://beta.music.apple.com/"]) {
+    await ses.cookies.set({
+      url,
+      name: "media-user-token",
+      value: account.music_token,
+      secure: true,
+      httpOnly: false,
+      sameSite: "no_restriction",
+      expirationDate: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 180,
     });
+  }
+  mainLog.info("web session adopted from the FairPlay sign-in");
+  return true;
+}
+
+/** Reload every player window so it picks up the adopted session. */
+function reloadPlayerWindows(): void {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed() && window.webContents.getURL().includes("music.apple.com")) {
+      window.webContents.reload();
+    }
+  }
+}
+
+/**
+ * First-run and no-key sign-in. When the backend reports no signed-in
+ * session, ask for the Apple ID in a native window (all platforms share the
+ * UI; macOS never reaches it), adopt the session, and reload the player.
+ * Resolves true when playback can proceed.
+ */
+async function ensureFairplaySession(parent: BrowserWindow | null): Promise<boolean> {
+  if (!fairplayEnv) return false;
+  const state = await fairplayStatus(fairplayEnv).catch(() => null);
+  if (state?.session === "signed in") {
+    const ses = session.fromPartition("persist:lidra");
+    await applyFairplaySession(ses);
+    return true;
+  }
+  if (process.platform === "darwin") return false;
+  mainLog.info("no FairPlay session; opening the Apple ID sign-in");
+  const ok = await runFairplayLogin(parent, fairplayEnv);
+  if (!ok) return false;
+  const ses = session.fromPartition("persist:lidra");
+  const applied = await applyFairplaySession(ses);
+  if (applied) reloadPlayerWindows();
+  return true;
+}
+
+/** Where the settings-screen sign-in drops the 2FA code for a waiting login. */
+function writeCodeFile(env: FairplayEnv, code: string): void {
+  if (!env.serviceDir) throw new Error("backend service is not staged");
+  fs.mkdirSync(path.dirname(codeFileFor(env.serviceDir)), { recursive: true });
+  fs.writeFileSync(codeFileFor(env.serviceDir), code, { mode: 0o600 });
+}
+
+/** Backend status in the shape the settings screen has always spoken. */
+async function fairplayStatusJson(): Promise<{ state: string; detail: string }> {
+  if (!fairplayEnv) {
+    return { state: "unavailable", detail: "high-quality backend unavailable on this platform" };
+  }
+  try {
+    const s = await fairplayStatus(fairplayEnv);
+    return s.session === "signed in"
+      ? { state: "running", detail: "signed in" }
+      : { state: "stopped", detail: `session: ${s.session}` };
+  } catch (error) {
+    return { state: "error", detail: errorMessage(error) };
+  }
+}
+
+/** A bare wsl.exe failure says nothing: collect each layer once and leave a report. */
+let fairplayDiagnosed = false;
+function diagnoseOnce(): void {
+  if (fairplayDiagnosed) return;
+  fairplayDiagnosed = true;
+  try {
+    const file = writeDiagnoseReport(diagnoseWslRuntime(), app.getPath("userData"));
+    mainLog.error(`fairplay diagnosis written to ${file}`);
+  } catch (error) {
+    mainLog.error(`fairplay diagnosis failed: ${errorMessage(error)}`);
+  }
+}
+
+/**
+ * Stage the backend after the engine exists. Heavy on a cold Windows start
+ * (WSL import), so it never throws: without a backend the app simply plays
+ * through the web player.
+ */
+async function setupFairplayBackend(): Promise<void> {
+  if (process.platform === "darwin") {
+    mainLog.info("macOS: no FairPlay backend; the web player serves playback");
     return;
   }
-  mainLog.info(`wrapper setup: ${setup.detail}`);
-  activeWrapperCommand = buildWslCommand({
-    decryptPort: portOf(decryptorAddress, 10020),
-    manifestPort: portOf(manifestAddress, 20020),
-  });
-  wrapper.setCommand(activeWrapperCommand);
-  // Keep Settings honest: the field shows the command that is really in use.
-  setAudioWrapperCommand(activeWrapperCommand);
-  const status = await wrapper.start();
-  mainLog.info(`wrapper ${status.state}${status.detail ? ` (${status.detail})` : ""}`);
+  try {
+    fairplayEnv =
+      process.platform === "win32" ? await setupFairplayWindows() : await setupFairplayLinux();
+  } catch (error) {
+    mainLog.error(`fairplay setup failed: ${errorMessage(error)}`);
+    return;
+  }
+  if (!fairplayEnv) return;
+  await applyFairplaySession(session.fromPartition("persist:lidra"));
+  // Adopt or sign in shortly after launch so the first HQ play is warm.
+  setTimeout(() => {
+    void ensureFairplaySession(win)
+      .then((ok) => {
+        if (ok) reloadPlayerWindows();
+      })
+      .catch((error: unknown) => mainLog.warn(`fairplay sign-in failed: ${errorMessage(error)}`));
+  }, 1_500);
 }
 
 function initAudioEngine(ses: Electron.Session): AudioEngine {
-  const credentials = new CredentialStore(ses);
-  // Header capture only sees requests the page has already sent, and the web
-  // player keeps its token in memory, so ask the page when nothing arrived yet.
-  credentials.setPageTokenSource(async () => {
-    if (!win || win.isDestroyed()) return null;
-    return win.webContents.executeJavaScript(
-      "(window.MusicKit && window.MusicKit.getInstance && " +
-        "window.MusicKit.getInstance().developerToken) || null",
-      true,
-    );
-  });
-  // Prefer a Widevine licence (no external service) when a device blob is
-  // configured; otherwise fall back to a key service or wrapper socket.
-  const widevine = createWidevineProvider(getAudioWidevineDevice() ?? undefined, () => {
-    const snapshot = credentials.snapshot();
-    if (!snapshot.developerToken || !snapshot.mediaUserToken) return null;
-    return {
-      developerToken: snapshot.developerToken,
-      mediaUserToken: snapshot.mediaUserToken,
-    };
-  });
-  const keyCache = new KeyCache(
-    widevine ??
-      createKeyProvider({
-        transport: getAudioKeyTransport(),
-        address: getAudioKeyService(),
-        token: getAudioKeyToken() ?? undefined,
-      }),
-  );
   const ffmpegPath = findFfmpeg(getAudioFfmpegPath() ?? undefined);
   if (ffmpegPath) {
     mainLog.info(`audio ffmpeg: ${ffmpegPath}`);
@@ -673,17 +729,8 @@ function initAudioEngine(ses: Electron.Session): AudioEngine {
       "no ffmpeg available: lossless and Dolby playback will fail. Install ffmpeg or set LIDRA_FFMPEG.",
     );
   }
-  const keySource = widevine ? "widevine licence" : keyCache.providerName;
-  mainLog.info(`audio key source: ${keySource}`);
-  if (keySource === "unconfigured" && getAudioEnabled()) {
-    const message =
-      "no audio key source configured: set LIDRA_WIDEVINE_DEVICE (a CDM device blob) " +
-      "or LIDRA_KEY_SERVICE. Playback will not start until one is available.";
-    mainLog.error(message);
-  }
   const engine = new AudioEngine({
-    credentials,
-    keyCache,
+    getFairplay: () => fairplayEnv,
     cacheRoot: path.join(app.getPath("userData"), "audio-cache"),
     getStorefront: () => getAudioStorefront() ?? "us",
     getPreference: () => {
@@ -692,33 +739,10 @@ function initAudioEngine(ses: Electron.Session): AudioEngine {
     },
     ffmpegPath: ffmpegPath ?? undefined,
     getSpatial: getAudioSpatial,
-    decryptMode: getAudioDecryptorService().trim() ? "wrapper" : "key",
-    decryptorService: getAudioDecryptorService(),
-    manifestService: getAudioManifestService(),
-    restartDecryptor: wrapperService
-      ? async () => {
-          await wrapperService?.restart();
-        }
-      : undefined,
-    // Only meaningful with a Widevine device: Apple's lossless renditions are
-    // FairPlay, so the keyed fallback is the 256 kbps web-playback asset.
-    webPlayback: widevine
-      ? (adamId: string) => {
-          const snapshot = credentials.snapshot();
-          if (!snapshot.developerToken || !snapshot.mediaUserToken) return Promise.resolve(null);
-          return webPlaybackMaster(
-            adamId,
-            {
-              developerToken: snapshot.developerToken,
-              mediaUserToken: snapshot.mediaUserToken,
-            },
-          );
-        }
-      : undefined,
     onStateChange: (snapshot) => {
       mainLog.info(
         `audio ${snapshot.state} ${snapshot.asset.name}` +
-          (snapshot.variant ? ` [${snapshot.variant.label}]` : "") +
+          (snapshot.variant ? ` [${snapshot.variant.audioGroup}]` : "") +
           (snapshot.check ? ` -> ${snapshot.check.label}` : "") +
           (snapshot.error ? `: ${snapshot.error}` : ""),
       );
@@ -731,22 +755,37 @@ function initAudioEngine(ses: Electron.Session): AudioEngine {
           verdict: "mismatch",
           requested: snapshot.variant?.tier,
         });
+        // "No key": the backend has no signed-in session. Offer the native
+        // sign-in once per launch; afterwards failures only touch the pill.
+        if (
+          !fairplayAutoPrompted &&
+          fairplayEnv &&
+          process.platform !== "darwin" &&
+          /signed in|not signed|no key|session/i.test(snapshot.error)
+        ) {
+          fairplayAutoPrompted = true;
+          fairplayLoginOpen = true;
+          void ensureFairplaySession(win)
+            .catch((e: unknown) => mainLog.warn(`sign-in prompt failed: ${errorMessage(e)}`))
+            .finally(() => {
+              fairplayLoginOpen = false;
+            });
+        }
       }
       // A cached track never re-enters "streaming"; its measured facts are just
       // as true, so publish on both transitions.
       if ((snapshot.state === "streaming" || snapshot.state === "complete") && snapshot.check) {
         const facts = snapshot.facts;
-        const wrapped = wrapperService?.status().state === "running";
         publishQuality({
           label:
-            snapshot.variant?.joc && facts?.atmos
+            snapshot.variant?.binaural && facts?.atmos
               ? `${snapshot.check.label} · JOC`
               : snapshot.check.label,
           verdict: snapshot.check.ok ? "ok" : "mismatch",
           requested: snapshot.variant?.tier,
           mismatches: snapshot.check.mismatches,
           tier: facts?.tier ?? snapshot.variant?.tier,
-          detail: facts?.label ?? snapshot.variant?.label,
+          detail: facts?.label ?? snapshot.variant?.audioGroup,
           codec: facts?.codec,
           sampleRate: facts?.sampleRate,
           bitDepth: facts?.bitDepth ?? null,
@@ -754,7 +793,7 @@ function initAudioEngine(ses: Electron.Session): AudioEngine {
           bitrateKbps:
             facts?.bitrateKbps ??
             (snapshot.variant?.bandwidth ? Math.round(snapshot.variant.bandwidth / 1000) : null),
-          transport: wrapped ? "Apple FairPlay · wrapper" : "Widevine licence",
+          transport: "Apple FairPlay · decrypter",
           verified: snapshot.check.ok,
         });
       }
@@ -775,174 +814,78 @@ function initAudioEngine(ses: Electron.Session): AudioEngine {
     });
   ipcMain.handle("lidra:audio-status", () => engine.status());
 
-  // FairPlay wrapper: the only route to lossless and Atmos. Lidra owns its
-  // lifecycle, so the user does not have to start a service by hand.
-  const decryptorAddress = getAudioDecryptorService() || "127.0.0.1:10020";
-  const manifestAddress = getAudioManifestService() || "127.0.0.1:20020";
-  const portOf = (address: string, fallback: number): number => {
-    const candidate = Number.parseInt(address.slice(address.lastIndexOf(":") + 1), 10);
-    return Number.isInteger(candidate) ? candidate : fallback;
-  };
-  const configuredWrapperCommand = expandWrapperCommand(getAudioWrapperCommand());
-  // The package ships a Unix default for this field, so on Windows it is only
-  // usable when it names something Windows can actually start.
-  // Our own WSL environment is managed by Lidra even after it has been written
-  // into the settings file: an upgrade must be able to rebuild it when the copy
-  // on disk is empty or incomplete.
-  const managedWslDistro = /wsl(?:\.exe)?\s+-d\s+LidraWrapper\b/i.test(configuredWrapperCommand);
-  const windowsRuntime =
-    process.platform === "win32" &&
-    (!isWindowsWrapperCommand(configuredWrapperCommand) || managedWslDistro);
-  // Linux and the BSDs can run the shipped payload directly; use it whenever the
-  // configured line points at a wrapper that is not installed.
-  const bundledRuntime = process.platform === "linux" && !configuredWrapperExists(configuredWrapperCommand);
-  const wrapper = new WrapperService({
-    command: windowsRuntime || bundledRuntime ? "" : configuredWrapperCommand,
-    decryptor: decryptorAddress,
-    manifest: manifestAddress,
-    // A Windows launch is `wsl … sh -c '…'`, so the login run rebuilds the whole
-    // line instead of appending arguments after the closing quote.
-    composeLogin:
-      process.platform === "win32"
-        ? (_base, credentials) =>
-            buildWslCommand({
-              decryptPort: portOf(decryptorAddress, 10020),
-              manifestPort: portOf(manifestAddress, 20020),
-              extra: ["-L", credentials, "-F"],
-            })
-        : undefined,
-    // Apple sends the code to the user's devices, and the wrapper can only take
-    // it as a file, so ask for it right here instead of making the user hunt for
-    // a settings field while a login sits waiting.
-    onNeedsCode: () => {
-      const mainWindow =
-        BrowserWindow.getAllWindows().find((window) =>
-          window.webContents.getURL().includes("music.apple.com"),
-        ) ?? null;
-      void showTwoFactorPrompt(mainWindow).then(async (code) => {
-        if (!code) {
-          mainLog.info("2FA prompt dismissed without a code");
-          return;
-        }
-        await writeWrapperCode(code);
-        mainLog.info("2FA code handed to the wrapper login");
-      });
-    },
-    onChange: (status) => {
-      mainLog.info(`wrapper ${status.state}${status.detail ? ` (${status.detail})` : ""}`);
-      if (status.state === "running" || status.state === "stopped" || status.state === "error") {
-        dismissTwoFactorPrompt();
-      }
-      if (status.state !== "running") return;
-      const ses = session.fromPartition("persist:lidra");
-      void applyWrapperSession(ses).then((applied) => {
-        if (!applied) return;
-        // The player is showing a signed-out shell; its own session is now valid.
-        for (const window of BrowserWindow.getAllWindows()) {
-          if (!window.isDestroyed() && window.webContents.getURL().includes("music.apple.com")) {
-            window.webContents.reload();
-          }
-        }
-      });
-    },
-  });
-  wrapperService = wrapper;
-  // Windows has no FairPlay client of its own: the wrapper ships with Lidra and
-  // runs inside a version 1 WSL environment (syscall translation, no VM).
-  if (windowsRuntime) {
-    // Importing a 120 MB environment and packing it for WSL takes a while on a
-    // cold install; do it after the window is on screen so the app never looks
-    // like it failed to start.
-    setTimeout(() => {
-      void prepareWindowsWrapper(wrapper, decryptorAddress, manifestAddress).catch((error) =>
-        mainLog.error(`wrapper setup failed: ${errorMessage(error)}`),
-      );
-    }, process.platform === "win32" ? 6_000 : 0);
-  } else if (bundledRuntime) {
-    void prepareBundledWrapper(wrapper, decryptorAddress, manifestAddress).catch((error) =>
-      mainLog.error(`wrapper setup failed: ${errorMessage(error)}`),
-    );
-  }
-  // Adopt or sign in shortly after launch so the first lossless play is warm.
-  setTimeout(() => {
-    void restoreWrapperLogin().catch((error) =>
-      mainLog.warn(`wrapper restore failed: ${errorMessage(error)}`),
-    );
-  }, 1_500);
-  ipcMain.handle("lidra:wrapper-status", () => wrapper.status());
+  // FairPlay backend: staged into per-app state on Linux, inside the private
+  // WSL1 distro on Windows. Setup is heavy on a cold start, so it runs after
+  // the engine exists and never throws — without it the app plays through
+  // the web player.
+  void setupFairplayBackend();
+  ipcMain.handle("lidra:fairplay-status", () => fairplayStatusJson());
+  // The settings screen still talks about the "wrapper": same channels, new backend.
+  ipcMain.handle("lidra:wrapper-status", () => fairplayStatusJson());
   ipcMain.handle("lidra:wrapper-signin", async (_event, payload: unknown) => {
-    const { email, password, code } = (payload ?? {}) as Record<string, string>;
-    // A code on its own is the retry path: the wrapper is already running its
-    // login and blocked on that file, so nothing else needs to be typed again.
-    if (typeof code === "string" && code.trim() && (!email || !password)) {
-      await writeWrapperCode(code.trim());
-      mainLog.info("wrote the 2FA code for the running wrapper login");
-      return { state: "starting", detail: "2FA code written" };
+    const { email, password, code } = (payload ?? {}) as Record<string, string | undefined>;
+    if (!fairplayEnv) {
+      return { state: "error", detail: "high-quality backend unavailable on this platform" };
     }
-    if (typeof email !== "string" || typeof password !== "string" || !email || !password) {
+    // A code on its own is the retry path: a login is already waiting on that
+    // file, so nothing else needs to be typed again.
+    if (code?.trim() && (!email || !password)) {
+      try {
+        writeCodeFile(fairplayEnv, code.trim());
+        mainLog.info("wrote the 2FA code for the running FairPlay login");
+        return { state: "starting", detail: "2FA code written" };
+      } catch (error) {
+        return { state: "error", detail: `could not write the 2FA code: ${errorMessage(error)}` };
+      }
+    }
+    if (!email || !password) {
       return { state: "error", detail: "Apple ID and password are required" };
     }
-    // The wrapper's login is a one-shot CLI run that authenticates against Apple's
-    // store services and caches the session in its own data directory. Lidra
-    // passes the credentials straight through and keeps no copy.
-    if (typeof code === "string" && code.trim()) {
-      await writeWrapperCode(code.trim());
-    }
-    let status = await wrapper.startWithLogin(email, password);
-    // A stale or half-imported Windows environment fails as a bare -1 with no
-    // output. Rebuild it once and retry, so upgrading does not need a reinstall.
-    if (status.state === "error" && process.platform === "win32") {
-      mainLog.warn("wrapper login failed; rebuilding the runtime and retrying once");
-      await prepareWindowsWrapper(wrapper, decryptorAddress, manifestAddress);
-      status = await wrapper.startWithLogin(email, password);
-      if (status.state === "error") {
-        // A bare -1 from wsl.exe says nothing. Collect what each layer sees and
-        // leave a report behind, so the next run has an actual reason.
-        const report = await diagnoseWslRuntime({});
-        const text = report
-          .map((entry) => `## ${entry.step} (exit ${entry.code})\n${entry.output}`)
-          .join("\n\n");
-        const file = path.join(app.getPath("userData"), "wrapper-diagnose.txt");
-        try {
-          fs.writeFileSync(
-            file,
-            `Lidra ${app.getVersion()} · payload ${payloadRevision}\n${new Date().toISOString()}\n\n${text}\n`,
-            { mode: 0o600 },
-          );
-        } catch {
-          // The message below still names the failing step.
-        }
-        const failing = report.find((entry) => entry.code !== 0) ?? report[report.length - 1];
-        mainLog.error(`wrapper diagnosis:\n${text}`);
-        status = {
-          ...status,
-          detail: `${status.detail || "wrapper exited"} — ${failing.step}: ${failing.output.split("\n")[0]} (full report: ${file})`,
-        };
+    // The backend login is a one-shot CLI run against Apple's store services.
+    // Lidra passes the credentials straight through and keeps no copy.
+    if (code?.trim()) {
+      try {
+        writeCodeFile(fairplayEnv, code.trim());
+      } catch {
+        /* the login run reports the real failure */
       }
     }
-    return { state: status.state, detail: status.detail };
+    try {
+      const ok = await fairplayLoginCli(fairplayEnv, email, password, {
+        onNeedCode: () =>
+          Promise.reject(
+            new Error(
+              "Apple asked for a 2FA code — enter it in the code field and sign in again",
+            ),
+          ),
+      });
+      if (!ok) {
+        if (process.platform === "win32") diagnoseOnce();
+        return {
+          state: "error",
+          detail:
+            "sign-in failed — if Apple asked for a 2FA code, enter it in the code field and sign in again",
+        };
+      }
+    } catch (error) {
+      return { state: "error", detail: errorMessage(error) };
+    }
+    await applyFairplaySession(session.fromPartition("persist:lidra"));
+    reloadPlayerWindows();
+    return { state: "running", detail: "signed in" };
   });
   ipcMain.handle("lidra:signout", async () => {
     await ses.clearStorageData({
       storages: ["cookies", "localstorage", "indexdb", "serviceworkers", "cachestorage"],
     });
     await ses.clearCache();
-    const win = BrowserWindow.getAllWindows()[0];
-    if (win) await win.webContents.session.clearAuthCache().catch(() => undefined);
-    // The remembered wrapper sign-in is part of the account: drop it too, so a
-    // sign-out is a real sign-out on the next launch.
-    setAudioWrapperLogin(null);
+    const first = BrowserWindow.getAllWindows()[0];
+    if (first) await first.webContents.session.clearAuthCache().catch(() => undefined);
     mainLog.info("signed out of the web session");
   });
-  ipcMain.handle("lidra:wrapper-start", () => wrapper.start());
-  ipcMain.handle("lidra:wrapper-stop", () => {
-    wrapper.stop();
-    return wrapper.status();
-  });
-  // The Windows runtime starts itself once its environment is ready.
-  if (!windowsRuntime && getAudioWrapperAutostart() && configuredWrapperCommand.trim()) {
-    void wrapper.start();
-  }
+  // The backend runs on demand per command; these stay for settings compat.
+  ipcMain.handle("lidra:wrapper-start", () => fairplayStatusJson());
+  ipcMain.handle("lidra:wrapper-stop", () => fairplayStatusJson());
   return engine;
 }
 
@@ -1015,53 +958,6 @@ function loadAssets(): Assets {
 }
 
 
-/**
- * Adopt the wrapper's store-services session for the web player.
- *
- * A media-user-token is what music.apple.com uses for a signed-in session, so a
- * single Apple ID entry (the wrapper's) is enough for both the audio pipeline and
- * the UI. Returns true when a cookie was written.
- */
-async function applyWrapperSession(ses: Electron.Session): Promise<boolean> {
-  const baseDir = wrapperBaseDir(activeWrapperCommand ?? getAudioWrapperCommand());
-  const state = readWrapperSession(baseDir);
-  if (!state) {
-    mainLog.info(`wrapper session: nothing at ${baseDir ?? "(no command)"}`);
-    return false;
-  }
-  // Replace a stale value, and leave an identical one alone. Keeping whatever
-  // cookie was already there meant an expired session kept the player on
-  // previews even after the wrapper signed in successfully.
-  const existing = await ses.cookies.get({ name: "media-user-token" });
-  if (existing.some((cookie) => cookie.value === state.mediaUserToken)) {
-    mainLog.info("wrapper session: player already carries it");
-    return false;
-  }
-  mainLog.info(
-    `wrapper session: adopting token ${state.mediaUserToken.slice(0, 8)}... (had ${existing.length})`,
-  );
-  await ses.cookies.set({
-    url: "https://music.apple.com/",
-    name: "media-user-token",
-    value: state.mediaUserToken,
-    secure: true,
-    httpOnly: false,
-    sameSite: "no_restriction",
-    expirationDate: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 180,
-  });
-  await ses.cookies.set({
-    url: "https://beta.music.apple.com/",
-    name: "media-user-token",
-    value: state.mediaUserToken,
-    secure: true,
-    httpOnly: false,
-    sameSite: "no_restriction",
-    expirationDate: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 180,
-  });
-  mainLog.info("web session adopted from the wrapper's sign-in");
-  return true;
-}
-
 function createMainWindow(ses: Electron.Session): {
   win: BrowserWindow;
   winReady: Promise<void>;
@@ -1084,10 +980,10 @@ function createMainWindow(ses: Electron.Session): {
     },
   });
 
-  // The wrapper may already hold a session (it survives restarts); adopting it
+  // The backend may already hold a session (it survives restarts); adopting it
   // before the first load means the player comes up signed in on its own.
-  void applyWrapperSession(ses).catch((error) => {
-    mainLog.warn(`could not adopt the wrapper session: ${errorMessage(error)}`);
+  void applyFairplaySession(ses).catch((error) => {
+    mainLog.warn(`could not adopt the FairPlay session: ${errorMessage(error)}`);
   });
 
   // did-finish-load fires while Apple Music is still an empty shell, so the
@@ -1264,199 +1160,6 @@ const AUTH_FRAME_LOG_PREFIX = "[lidra] auth-frame hide:";
 const AUTH_CREDS_PREFIX = "[lidra] auth-creds:";
 const AUTH_CODE_PREFIX = "[lidra] auth-code:";
 
-/**
- * Credentials captured from Apple's own sign-in frame, kept only long enough to
- * complete the wrapper's app-session login. Never logged, never persisted.
- */
-let pendingAuth: { email: string; password: string } | null = null;
-let pendingCode: string | null = null;
-let wrapperSignInStarted = false;
-
-/**
- * The wrapper needs an app-session login for every process it runs, and a stale
- * process returns noise instead of failing. Remembering the sign-in (encrypted
- * with the OS keyring) lets Lidra start a fresh, correctly keyed wrapper at
- * launch instead of asking the user to sign in again.
- */
-function localVaultKey(): Buffer {
-  // No OS keyring on this machine: keep the key in the profile with owner-only
-  // permissions. This is not hardware-backed, and Settings says so.
-  const file = path.join(app.getPath("userData"), "wrapper-login.key");
-  try {
-    const existing = fs.readFileSync(file);
-    if (existing.length === 32) return existing;
-  } catch {
-    /* first run */
-  }
-  const key = randomBytes(32);
-  fs.writeFileSync(file, key, { mode: 0o600 });
-  return key;
-}
-
-/** Seal the sign-in: OS keyring when there is one, an encrypted file otherwise. */
-function sealLogin(json: string): string | null {
-  try {
-    if (safeStorage.isEncryptionAvailable()) {
-      return `keyring:${safeStorage.encryptString(json).toString("base64")}`;
-    }
-    const iv = randomBytes(12);
-    const cipher = createCipheriv("aes-256-gcm", localVaultKey(), iv);
-    const body = Buffer.concat([cipher.update(json, "utf8"), cipher.final()]);
-    return `local:${Buffer.concat([iv, cipher.getAuthTag(), body]).toString("base64")}`;
-  } catch (error) {
-    mainLog.warn(`wrapper: could not seal the sign-in: ${errorMessage(error)}`);
-    return null;
-  }
-}
-
-/** Reverse `sealLogin`. */
-function openLogin(blob: string): string | null {
-  try {
-    if (blob.startsWith("keyring:")) {
-      return safeStorage.decryptString(Buffer.from(blob.slice("keyring:".length), "base64"));
-    }
-    if (blob.startsWith("local:")) {
-      const raw = Buffer.from(blob.slice("local:".length), "base64");
-      const iv = raw.subarray(0, 12);
-      const tag = raw.subarray(12, 28);
-      const body = raw.subarray(28);
-      const decipher = createDecipheriv("aes-256-gcm", localVaultKey(), iv);
-      decipher.setAuthTag(tag);
-      return Buffer.concat([decipher.update(body), decipher.final()]).toString("utf8");
-    }
-  } catch (error) {
-    mainLog.warn(`wrapper: stored sign-in is unreadable: ${errorMessage(error)}`);
-  }
-  return null;
-}
-
-function saveWrapperLogin(email: string, password: string): void {
-  if (!email || !password) return;
-  if (!getAudioRememberLogin()) return;
-  const blob = sealLogin(JSON.stringify({ email, password }));
-  if (!blob) return;
-  setAudioWrapperLogin(blob);
-  mainLog.info(
-    `wrapper: sign-in remembered (${
-      safeStorage.isEncryptionAvailable() ? "OS keyring" : "encrypted local file"
-    })`,
-  );
-}
-
-function loadWrapperLogin(): { email: string; password: string } | null {
-  if (!getAudioRememberLogin()) return null;
-  const stored = getAudioWrapperLogin();
-  if (!stored) return null;
-  const json = openLogin(stored);
-  if (!json) {
-    setAudioWrapperLogin(null);
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(json) as { email?: string; password?: string };
-    if (!parsed.email || !parsed.password) return null;
-    return { email: parsed.email, password: parsed.password };
-  } catch {
-    setAudioWrapperLogin(null);
-    return null;
-  }
-}
-
-async function restoreWrapperLogin(): Promise<void> {
-  if (!wrapperService || wrapperService.status().state === "running") return;
-  // A wrapper from an earlier run may still be serving; adopting it costs
-  // nothing and needs no credentials.
-  if (await isListening(wrapperService.status().decryptor)) {
-    const adopted = await wrapperService.start();
-    mainLog.info(`wrapper ${adopted.state} (${adopted.detail || "adopted"})`);
-    return;
-  }
-  const stored = loadWrapperLogin();
-  if (!stored) return;
-  mainLog.info("wrapper: starting from the remembered sign-in");
-  const status = await wrapperService.startWithLogin(stored.email, stored.password);
-  mainLog.info(`wrapper restore ${status.state}${status.detail ? ` (${status.detail})` : ""}`);
-  if (status.state === "error") {
-    // A changed password must not wedge every launch.
-    setAudioWrapperLogin(null);
-    mainLog.warn("wrapper: remembered sign-in no longer works; forgotten");
-  }
-}
-/** Watches for the player's session so the wrapper only logs in once it exists. */
-let wrapperSessionWatch: ReturnType<typeof setInterval> | null = null;
-
-async function forwardAuthToWrapper(email: string, password: string, code?: string): Promise<void> {
-  if (!email || !password || wrapperSignInStarted || !wrapperService) return;
-  wrapperSignInStarted = true;
-  try {
-    if (code && code.trim()) await writeWrapperCode(code.trim());
-    mainLog.info("wrapper: signing in with the credentials from the Apple sign-in form");
-    const status = await wrapperService.startWithLogin(email, password);
-    mainLog.info(`wrapper sign-in ${status.state}${status.detail ? ` (${status.detail})` : ""}`);
-    if (status.state === "running") saveWrapperLogin(email, password);
-    if (status.state !== "running") {
-      // The run did not come up (wrong password, or Apple asked for a code), so a
-      // later capture may retry instead of being swallowed by the latch. The
-      // credentials stay pending for a retry that carries the code.
-      wrapperSignInStarted = false;
-    }
-  } catch (error) {
-    mainLog.warn(`wrapper sign-in failed: ${errorMessage(error)}`);
-    wrapperSignInStarted = false;
-  }
-}
-
-// assets/authFrameFix.js hides the passkey and "Sign in with iPhone" routes in
-// Apple's sign-in iframe, and reports what it hid back over console-message,
-// which is the only channel out of a frame the main process has not preloaded.
-/**
- * A credential or 2FA code captured from Apple's sign-in frame. The wrapper's
- * login is a one-shot CLI run, so it is started once, after the code (if any)
- * has arrived.
- */
-function handleAuthCapture(isCreds: boolean, value: unknown): void {
-  const payload = (value ?? {}) as { email?: string; password?: string; code?: string };
-  if (isCreds) {
-    pendingAuth = { email: String(payload.email ?? ""), password: String(payload.password ?? "") };
-    if (payload.code) pendingCode = String(payload.code);
-    // Never start the wrapper from an unverified attempt: Apple sees every extra
-    // login as a separate device, and a run per mistyped password reads as abuse.
-    // The wrapper only logs in once the player actually has a session.
-    watchForPlayerSession();
-    return;
-  }
-  if (!payload.code) return;
-  pendingCode = String(payload.code);
-  if (pendingAuth && !wrapperSignInStarted) void forwardIfSignedIn();
-}
-
-/** Poll the partition until the player is signed in, then hand the wrapper's login its turn. */
-function watchForPlayerSession(): void {
-  if (wrapperSessionWatch) return;
-  const ses = session.fromPartition("persist:lidra");
-  const startedAt = Date.now();
-  wrapperSessionWatch = setInterval(() => {
-    void (async () => {
-      if (Date.now() - startedAt > 180_000) {
-        if (wrapperSessionWatch) clearInterval(wrapperSessionWatch);
-        wrapperSessionWatch = null;
-        return;
-      }
-      await forwardIfSignedIn();
-    })();
-  }, 1_500);
-}
-
-async function forwardIfSignedIn(): Promise<void> {
-  if (!pendingAuth || wrapperSignInStarted) return;
-  const ses = session.fromPartition("persist:lidra");
-  const cookies = await ses.cookies.get({ name: "media-user-token" });
-  if (cookies.length === 0) return;
-  if (wrapperSessionWatch) clearInterval(wrapperSessionWatch);
-  wrapperSessionWatch = null;
-  await forwardAuthToWrapper(pendingAuth.email, pendingAuth.password, pendingCode ?? undefined);
-}
-
 function setupAuthFrameInjection(win: BrowserWindow, script: string): void {
   const authLog = log.scope("auth-frame");
 
@@ -1485,55 +1188,11 @@ function setupAuthFrameInjection(win: BrowserWindow, script: string): void {
     },
   );
 
-  // Console messages from a cross-origin frame are not reliably delivered, so the
-  // frame publishes its capture on a global and the main process reads it.
-  const handledCaptures = new Set<number>();
-  const capturePoll = setInterval(() => {
-    let frames: Electron.WebFrameMain[] = [];
-    try {
-      frames = win.webContents.mainFrame.framesInSubtree;
-    } catch {
-      return;
-    }
-    for (const frame of frames) {
-      let host: string;
-      try {
-        host = new URL(frame.url).hostname;
-      } catch {
-        continue;
-      }
-      if (!AUTH_FRAME_HOSTS.has(host)) continue;
-      frame
-        .executeJavaScript(
-          "window.__lidraAuthCapture || (() => {"
-          + " try { return JSON.parse(sessionStorage.getItem('__lidraAuthCapture') || 'null'); }"
-          + " catch (e) { return null; } })()",
-        )
-        .then((captured: unknown) => {
-          if (!captured || typeof captured !== "object") return;
-          const { kind, payload, seq } = captured as { kind?: string; payload?: unknown; seq?: number };
-          if (!seq || handledCaptures.has(seq)) return;
-          handledCaptures.add(seq);
-          if (handledCaptures.size > 50) handledCaptures.clear();
-          handleAuthCapture(kind === "creds", payload);
-        })
-        .catch(() => {
-          /* frame navigated away */
-        });
-    }
-  }, 250);
-  win.on("closed", () => clearInterval(capturePoll));
-
   win.webContents.on("console-message", (event) => {
-    // Credential events from Apple's sign-in frame: handle first, never log.
+    // Credential events from Apple's sign-in frame: swallow first, never log.
+    // Sign-in now happens in the native FairPlay window; the frame's own
+    // capture no longer drives anything.
     if (event.message.startsWith(AUTH_CREDS_PREFIX) || event.message.startsWith(AUTH_CODE_PREFIX)) {
-      const isCreds = event.message.startsWith(AUTH_CREDS_PREFIX);
-      const raw = event.message.slice((isCreds ? AUTH_CREDS_PREFIX : AUTH_CODE_PREFIX).length);
-      try {
-        handleAuthCapture(isCreds, JSON.parse(raw));
-      } catch {
-        authLog.warn("could not parse captured credentials");
-      }
       return;
     }
     if (!event.message.startsWith(AUTH_FRAME_LOG_PREFIX)) return;

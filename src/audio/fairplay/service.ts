@@ -28,9 +28,10 @@ import type {
   FairplayPaths,
   FairplayStatus,
   FairplayTier,
+  FairplayWsl,
 } from "./types";
 
-export type { FairplayAccount, FairplayEnv, FairplayPaths, FairplayStatus, FairplayTier } from "./types";
+export type { FairplayAccount, FairplayEnv, FairplayPaths, FairplayStatus, FairplayTier, FairplayWsl } from "./types";
 
 export const LIB_NAMES = [
   "libandroidappmusic.so",
@@ -98,7 +99,7 @@ export function isServiceInstall(root: string): boolean {
   });
 }
 
-/** Build the isolated environment for every CLI invocation. */
+/** Build the isolated environment for every CLI invocation (Linux/macOS paths). */
 export function buildEnv(paths: FairplayPaths, python: string): FairplayEnv {
   const dataDir = path.join(paths.stateDir, "fpdata");
   const configDir = path.join(paths.stateDir, "fpconfig");
@@ -110,6 +111,23 @@ export function buildEnv(paths: FairplayPaths, python: string): FairplayEnv {
     configDir,
     serviceDir: isServiceInstall(serviceDir) ? serviceDir : null,
     ports: { ...DEFAULT_PORTS },
+  };
+}
+
+/** Build an environment that lives entirely inside the WSL distro. */
+export function buildWslEnv(wsl: FairplayWsl): FairplayEnv {
+  const dataDir = "/root/.lidra-fp/fpdata";
+  const configDir = "/root/.lidra-fp/fpconfig";
+  const serviceDir = "/opt/lidra/service";
+  return {
+    PYTHON: wsl.python,
+    packageDir: "/opt/lidra/fairplay",
+    dataDir,
+    configDir,
+    serviceDir,
+    ports: { ...DEFAULT_PORTS },
+    noSudo: true,
+    wsl,
   };
 }
 
@@ -125,19 +143,41 @@ export function spawnEnv(env: FairplayEnv): NodeJS.ProcessEnv {
     FPDECRYPT_PORT_KEY: String(env.ports.key),
   };
   if (env.serviceDir) out.FPDECRYPT_SERVICE = env.serviceDir;
+  if (env.noSudo) out.FPDECRYPT_NO_SUDO = "1";
   return out;
 }
 
+export interface SpawnSpec {
+  cmd: string;
+  args: string[];
+  cwd?: string;
+}
+
+/**
+ * Native spawn runs `python -m` in the package dir (executing __main__.py by
+ * path breaks its relative imports). WSL spawn goes through wsl.exe with the
+ * whole backend inside the distro — no Windows/Linux path sharing.
+ */
+export function spawnSpec(env: FairplayEnv, args: string[]): SpawnSpec {
+  const cli = ["-m", "fairplay_decrypter", ...args];
+  if (env.wsl) {
+    return {
+      cmd: "wsl.exe",
+      args: ["-d", env.wsl.distro, "-u", "root", "--", env.PYTHON, ...cli],
+    };
+  }
+  return { cmd: env.PYTHON, args: cli, cwd: env.packageDir };
+}
+
 export function cliArgs(env: FairplayEnv, args: string[]): { cmd: string; args: string[] } {
-  // Run as `-m` with the package dir as cwd: executing __main__.py by path
-  // breaks its relative imports.
-  return { cmd: env.PYTHON, args: ["-m", "fairplay_decrypter", ...args] };
+  const spec = spawnSpec(env, args);
+  return { cmd: spec.cmd, args: spec.args };
 }
 
 function runJson<T>(env: FairplayEnv, args: string[], timeoutMs = 60_000): Promise<T> {
-  const { cmd, args: full } = cliArgs(env, args);
+  const spec = spawnSpec(env, args);
   return new Promise((resolve, reject) => {
-    const child = spawn(cmd, full, { env: spawnEnv(env), cwd: env.packageDir, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(spec.cmd, spec.args, { env: spawnEnv(env), cwd: spec.cwd, stdio: ["ignore", "pipe", "pipe"] });
     let out = "";
     let err = "";
     const timer = setTimeout(() => {
@@ -226,22 +266,24 @@ export async function login(
   password: string,
   hooks: LoginHooks,
   timeoutMs = 240_000,
+  signal?: AbortSignal,
 ): Promise<boolean> {
   const st = await status(env).catch(() => null);
   if (st?.session === "signed in") {
     log.info("fairplay: already signed in");
     return true;
   }
-  const { cmd, args } = cliArgs(env, ["login", "--user", user, "--password", password]);
+  const spec = spawnSpec(env, ["login", "--user", user, "--password", password]);
   log.info("fairplay: starting sign-in");
   return new Promise((resolve) => {
-    const child = spawn(cmd, args, { env: spawnEnv(env), cwd: env.packageDir, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(spec.cmd, spec.args, { env: spawnEnv(env), cwd: spec.cwd, stdio: ["ignore", "pipe", "pipe"] });
     let settled = false;
     let codeRequested = false;
     const done = (ok: boolean) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
       try {
         child.kill("SIGKILL");
       } catch {
@@ -249,6 +291,12 @@ export async function login(
       }
       resolve(ok);
     };
+    const onAbort = (): void => done(false);
+    if (signal?.aborted) {
+      done(false);
+      return;
+    }
+    signal?.addEventListener("abort", onAbort, { once: true });
     const timer = setTimeout(() => done(false), timeoutMs);
     const onOutput = (d: Buffer) => {
       const text = d.toString();
@@ -327,6 +375,6 @@ export function stream(
 ): ChildProcess {
   const args = ["stream", adam];
   if (tier) args.push("--tier", tier);
-  const { cmd, args: full } = cliArgs(env, args);
-  return spawn(cmd, full, { env: spawnEnv(env), cwd: env.packageDir, stdio: ["ignore", "pipe", "pipe"] });
+  const spec = spawnSpec(env, args);
+  return spawn(spec.cmd, spec.args, { env: spawnEnv(env), cwd: spec.cwd, stdio: ["ignore", "pipe", "pipe"] });
 }

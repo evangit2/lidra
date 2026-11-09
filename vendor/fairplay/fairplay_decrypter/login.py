@@ -22,6 +22,20 @@ def _code_path():
     return config.session_files() / "2fa.txt"
 
 
+def _code_paths() -> list:
+    from pathlib import Path
+    paths = [_code_path()]
+    try:
+        inst = config.service_dir()
+    except Exception:
+        inst = None
+    if inst is not None:
+        # The service reads rootfs/<files>/2fa.txt relative to its install
+        # dir (credentialHandler), not relative to the device base.
+        paths.append(Path(inst) / config.FILES_DIR / "2fa.txt")
+    return paths
+
+
 def _wait_token(deadline: float) -> bool:
     while time.time() < deadline:
         try:
@@ -53,15 +67,20 @@ def login(user: str | None = None, password: str | None = None, fresh: bool = Fa
             return True
         print("waiting on two-factor approval...")
         code = input("2FA code: ").strip()
-        config.session_files().mkdir(parents=True, exist_ok=True)
-        _code_path().write_text(code)
+        for p in _code_paths():
+            try:
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text(code)
+            except OSError:
+                pass
         if _wait_token(time.time() + 120):
             print("signed in; device trusted for future starts")
             return True
         print("login did not complete; check fairplay-decrypt status / service log")
         return False
     finally:
-        try:
-            _code_path().unlink()
-        except OSError:
-            pass
+        for p in _code_paths():
+            try:
+                p.unlink()
+            except OSError:
+                pass

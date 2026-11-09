@@ -5,11 +5,13 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   buildEnv,
+  buildWslEnv,
   cliArgs,
   codeFileFor,
   findPackageDir,
   isServiceInstall,
   spawnEnv,
+  spawnSpec,
 } from "../src/audio/fairplay/service";
 
 const ROOT = path.resolve(__dirname, "..");
@@ -54,6 +56,28 @@ describe("fairplay backend", () => {
     const { cmd, args } = cliArgs(env, ["status", "--json"]);
     expect(cmd).toBe("/usr/bin/python3");
     expect(args).toEqual(["-m", "fairplay_decrypter", "status", "--json"]);
+  });
+
+  it("routes WSL spawns through wsl.exe with nosudo", () => {
+    const env = buildWslEnv({ distro: "LidraWrapper", python: "/opt/python/python3" });
+    expect(env.wsl?.distro).toBe("LidraWrapper");
+    expect(env.noSudo).toBe(true);
+    const spec = spawnSpec(env, ["status", "--json"]);
+    expect(spec.cmd).toBe("wsl.exe");
+    expect(spec.args).toEqual([
+      "-d",
+      "LidraWrapper",
+      "-u",
+      "root",
+      "--",
+      "/opt/python/python3",
+      "-m",
+      "fairplay_decrypter",
+      "status",
+      "--json",
+    ]);
+    expect(spec.cwd).toBeUndefined();
+    expect(spawnEnv(env).FPDECRYPT_NO_SUDO).toBe("1");
   });
 
   it("points the 2FA code file at the service files dir", () => {

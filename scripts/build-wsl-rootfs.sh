@@ -48,6 +48,36 @@ cp "$ROOT/vendor/wrapper/lib64/ld-linux-x86-64.so.2" "$WORK/root/lib64/ld-linux-
 cp "$ROOT/vendor/wrapper/lib/x86_64-linux-gnu/libc.so.6" "$WORK/root/lib/x86_64-linux-gnu/libc.so.6"
 chmod 755 "$WORK/root/lib64/ld-linux-x86-64.so.2" "$WORK/root/lib/x86_64-linux-gnu/libc.so.6"
 
+# Python for the vendored fairplay-decrypter backend. Alpine minirootfs ships
+# none, and apk needs a live system, so resolve exact .apk files from APKINDEX
+# and unpack them (an .apk is a gzip tarball; .PKGINFO/.SIGN are harmless).
+# Only the libraries the backend's stdlib use needs: TLS (urllib to Apple),
+# zlib (zipfile), expat, ffi.
+echo "fetching APKINDEX for python3"
+curl -fsSL -o "$WORK/APKINDEX.tar.gz" \
+  "https://dl-cdn.alpinelinux.org/alpine/v${VERSION}/main/x86_64/APKINDEX.tar.gz"
+mkdir -p "$WORK/apkindex" && tar xzf "$WORK/APKINDEX.tar.gz" -C "$WORK/apkindex"
+apk_file() {
+  local pkg="$1" ver
+  ver=$(grep -A1 "^P:${pkg}$" "$WORK/apkindex/APKINDEX" | grep "^V:" | head -n1 | cut -d: -f2)
+  if [ -z "$ver" ]; then echo "APKINDEX has no $pkg" >&2; exit 1; fi
+  echo "${pkg}-${ver}.apk"
+}
+mkdir -p "$WORK/apk"
+for pkg in python3 libssl3 libcrypto3 zlib libexpat libffi; do
+  file=$(apk_file "$pkg") || exit 1
+  echo "fetching $file"
+  curl -fsSL -o "$WORK/apk/$file" \
+    "https://dl-cdn.alpinelinux.org/alpine/v${VERSION}/main/x86_64/$file"
+  tar xzf "$WORK/apk/$file" -C "$WORK/root" --exclude='.PKGINFO' --exclude='.SIGN.*'
+done
+
+# The vendored backend supervises the service from inside the distro.
+mkdir -p "$WORK/root/opt/lidra/fairplay"
+cp -a "$ROOT/vendor/fairplay/fairplay_decrypter" "$WORK/root/opt/lidra/fairplay/fairplay_decrypter"
+mkdir -p "$WORK/root/opt/python"
+ln -sfn /usr/bin/python3 "$WORK/root/opt/python/python3"
+
 # Logins run as root; Alpine already ships the account, and the wrapper needs
 # /root to exist as a home directory.
 mkdir -p "$WORK/root/root"

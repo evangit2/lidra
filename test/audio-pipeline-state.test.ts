@@ -3,8 +3,10 @@ import { TrackPipeline } from "../src/audio/pipeline";
 
 /**
  * The player only learns the delivered quality once the first fragment is
- * decrypted. That transition has to reach the listener, or the badge can never
- * show a success.
+ * decrypted. Transitions have to reach the listener, or the badge can never
+ * show a success. The streaming/complete transitions need ffmpeg and the
+ * backend, so these units drive the network-free error transition through
+ * the private fail(); the emit() path is shared by every transition.
  */
 function makePipeline(onChange: () => void): TrackPipeline {
   return new TrackPipeline({
@@ -22,16 +24,18 @@ function makePipeline(onChange: () => void): TrackPipeline {
   } as never);
 }
 
+type Failable = { fail: (error: unknown) => void };
+
 describe("TrackPipeline state notifications", () => {
-  it("notifies on every transition, including the first streamed fragment", () => {
+  it("notifies on a transition, including from the initial state", () => {
     const onChange = vi.fn();
     const pipeline = makePipeline(onChange);
+    expect(pipeline.snapshot().state).toBe("preparing");
 
-    (pipeline as unknown as { setState: (state: string) => void }).setState("streaming");
-    (pipeline as unknown as { setState: (state: string) => void }).setState("complete");
+    (pipeline as unknown as Failable).fail(new Error("boom"));
 
-    expect(onChange).toHaveBeenCalledTimes(2);
-    expect(pipeline.snapshot().state).toBe("complete");
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(pipeline.snapshot().state).toBe("error");
   });
 
   it("keeps working when the listener throws", () => {
@@ -39,9 +43,7 @@ describe("TrackPipeline state notifications", () => {
       throw new Error("listener exploded");
     });
 
-    expect(() =>
-      (pipeline as unknown as { setState: (state: string) => void }).setState("streaming"),
-    ).not.toThrow();
-    expect(pipeline.snapshot().state).toBe("streaming");
+    expect(() => (pipeline as unknown as Failable).fail(new Error("boom"))).not.toThrow();
+    expect(pipeline.snapshot().state).toBe("error");
   });
 });

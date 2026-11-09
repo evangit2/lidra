@@ -29,6 +29,12 @@ export interface FairplayPaths {
   stateDir: string;
 }
 
+export interface FairplayWsl {
+  distro: string;
+  /** Linux python inside the distro, e.g. /opt/python/python3. */
+  python: string;
+}
+
 export interface FairplayEnv {
   PYTHON: string;
   packageDir: string;
@@ -36,4 +42,8 @@ export interface FairplayEnv {
   configDir: string;
   serviceDir: string | null;
   ports: { decrypt: number; manifest: number; account: number; key: number };
+  /** Pass FPDECRYPT_NO_SUDO (userns hosts keep no passwordless sudo). */
+  noSudo?: boolean;
+  /** Set on Windows: spawn through wsl.exe instead of directly. */
+  wsl?: FairplayWsl;
 }

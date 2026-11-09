@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'" />
+    <title>Sign in with Apple ID</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 24px 26px 20px;
+        font: 13px/1.45 -apple-system, system-ui, "Helvetica Neue", sans-serif;
+        background: #1c1c1e;
+        color: #f5f5f7;
+        user-select: none;
+      }
+      h1 {
+        margin: 0 0 6px;
+        font-size: 15px;
+        font-weight: 600;
+      }
+      p {
+        margin: 0 0 14px;
+        color: #a1a1a6;
+        font-size: 12.5px;
+      }
+      label {
+        display: block;
+        margin: 10px 0 4px;
+        color: #a1a1a6;
+        font-size: 12px;
+      }
+      input {
+        width: 100%;
+        padding: 10px 12px;
+        border-radius: 8px;
+        border: 1px solid #3a3a3c;
+        background: #2c2c2e;
+        color: #fff;
+        font-size: 14px;
+        outline: none;
+      }
+      input:focus {
+        border-color: #0a84ff;
+        box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.25);
+      }
+      #code {
+        font: 15px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+        letter-spacing: 4px;
+        text-align: center;
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 10px;
+        margin-top: 18px;
+      }
+      button {
+        font: inherit;
+        padding: 7px 16px;
+        border-radius: 7px;
+        border: none;
+        cursor: pointer;
+      }
+      button.primary {
+        background: #0a84ff;
+        color: #fff;
+      }
+      button.plain {
+        background: transparent;
+        color: #a1a1a6;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      #status {
+        min-height: 18px;
+        margin-top: 12px;
+        color: #0a84ff;
+        font-size: 12.5px;
+      }
+      #status.error {
+        color: #ff6961;
+      }
+      .hidden {
+        display: none;
+      }
+      .spinner {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        margin-right: 6px;
+        border: 2px solid rgba(10, 132, 255, 0.3);
+        border-top-color: #0a84ff;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        vertical-align: -1px;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="phase-creds">
+      <h1>Sign in with your Apple ID</h1>
+      <p>One sign-in authorises this device for high-quality playback. Apple may ask for a two-factor code next.</p>
+      <form id="creds-form">
+        <label for="email">Apple ID</label>
+        <input id="email" type="email" autocomplete="username" placeholder="you@example.com" />
+        <label for="password">Password</label>
+        <input id="password" type="password" autocomplete="current-password" />
+        <div class="row">
+          <button type="button" class="plain" id="creds-cancel">Cancel</button>
+          <button type="submit" class="primary" id="creds-submit">Sign in</button>
+        </div>
+      </form>
+    </div>
+    <div id="phase-code" class="hidden">
+      <h1>Two-factor code</h1>
+      <p>Apple sent a verification code to your devices. Enter it below.</p>
+      <form id="code-form">
+        <input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="······" />
+        <div class="row">
+          <button type="button" class="plain" id="code-cancel">Cancel</button>
+          <button type="submit" class="primary" id="code-submit">Verify</button>
+        </div>
+      </form>
+    </div>
+    <div id="status"></div>
+    <script>
+      (function () {
+        var api = window.lidraFairplayLogin;
+        var status = document.getElementById("status");
+        function setStatus(text, isError, busy) {
+          status.className = isError ? "error" : "";
+          status.innerHTML = busy ? '<span class="spinner"></span>' + text : text;
+        }
+        document.getElementById("creds-cancel").addEventListener("click", function () {
+          api.cancel();
+        });
+        document.getElementById("code-cancel").addEventListener("click", function () {
+          api.cancel();
+        });
+        document.getElementById("creds-form").addEventListener("submit", function (e) {
+          e.preventDefault();
+          var user = document.getElementById("email").value.trim();
+          var password = document.getElementById("password").value;
+          if (!user || !password) {
+            setStatus("Enter your Apple ID and password.", true, false);
+            return;
+          }
+          document.getElementById("creds-submit").disabled = true;
+          setStatus("Signing in — this can take a minute…", false, true);
+          api.submitCreds(user, password);
+        });
+        document.getElementById("code-form").addEventListener("submit", function (e) {
+          e.preventDefault();
+          var code = document.getElementById("code").value.trim();
+          if (!code) return;
+          document.getElementById("code-submit").disabled = true;
+          setStatus("Verifying…", false, true);
+          api.submitCode(code);
+        });
+        api.onPhase(function (phase, message) {
+          if (phase === "code") {
+            document.getElementById("phase-creds").classList.add("hidden");
+            document.getElementById("phase-code").classList.remove("hidden");
+            document.getElementById("code").focus();
+            setStatus(message || "Enter the code Apple sent you.", false, false);
+          } else if (phase === "error") {
+            document.getElementById("creds-submit").disabled = false;
+            document.getElementById("code-submit").disabled = false;
+            setStatus(message || "Sign-in failed.", true, false);
+          } else if (phase === "working") {
+            setStatus(message || "Working…", false, true);
+          }
+        });
+        document.getElementById("email").focus();
+      })();
+    </script>
+  </body>
+</html>
