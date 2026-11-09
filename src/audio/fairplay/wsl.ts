@@ -26,8 +26,12 @@ import log from "electron-log/main";
 const wslLog = log.scope("fairplay.wsl");
 
 export const WSL_DISTRO = "LidraWrapper";
-/** Bump to force every machine to re-import the environment on upgrade. */
-export const WSL_PAYLOAD_REVISION = "2026-11-12-fairplay3";
+/**
+ * Bump to force every machine to re-import the environment on upgrade.
+ * A bump wipes the distro AND its trusted Apple session, so users sign in
+ * again: bump only when the image itself changes, never for app code.
+ */
+export const WSL_PAYLOAD_REVISION = "2026-11-12-fairplay4";
 
 export const WSL_PYTHON = "/opt/python/python3";
 export const WSL_PACKAGE_DIR = "/opt/lidra/fairplay";

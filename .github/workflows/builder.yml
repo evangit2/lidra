@@ -173,6 +173,7 @@ jobs:
           grep -qx './bin/sh' build/wrapper-tar/entries.txt
           grep -qx './etc/passwd' build/wrapper-tar/entries.txt
           grep -qx './opt/lidra/wrapper' build/wrapper-tar/entries.txt
+          grep -qx './opt/lidra/rootfs/data/data/com.apple.android.music/files/adi.pb' build/wrapper-tar/entries.txt
           grep -qx './opt/lidra/rootfs/dev/urandom' build/wrapper-tar/entries.txt
           grep -qx './opt/lidra/fairplay/fairplay_decrypter/__main__.py' build/wrapper-tar/entries.txt
           grep -qx './opt/python/python3' build/wrapper-tar/entries.txt
