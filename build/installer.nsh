@@ -8,6 +8,8 @@
 
 !macro customUnInstall
   ; Unregistering an imported distro is immediate and needs no prompt.
+  ; Both names: LidraFairplay is current, LidraWrapper is its pre-rename self.
+  nsExec::ExecToLog 'wsl.exe --unregister LidraFairplay'
   nsExec::ExecToLog 'wsl.exe --unregister LidraWrapper'
   RMDir /r "$LOCALAPPDATA\Lidra\wsl"
   RMDir /r "$LOCALAPPDATA\Lidra\wrapper-runtime"

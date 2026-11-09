@@ -276,7 +276,7 @@ export function stageRuntime(payloadDir: string, env: FairplayEnv): string {
   }
   fs.mkdirSync(path.join(dest, FILES_REL), { recursive: true });
   // Device nodes cannot live in git, so the staged copy has none — and the
-  // wrapper stops with "Permission denied" when rootfs/dev/urandom is
+  // the backend stops with "Permission denied" when rootfs/dev/urandom is
   // missing. Copy the host's (cp -a preserves the character devices).
   const devDir = path.join(dest, "rootfs", "dev");
   const missingNodes = ["null", "zero", "random", "urandom"].filter((node) => {
@@ -317,7 +317,7 @@ export function codeFilePosix(serviceDir: string): string {
 
 /**
  * Mirror the provisioned device identity to the base-dir root, where the
- * wrapper actually stats for it. Fill-if-missing: a refresh the backend
+ * the backend actually stats for it. Fill-if-missing: a refresh the backend
  * wrote must never be clobbered. Returns files copied.
  */
 export function stageIdentityAtBase(serviceDir: string): number {
@@ -341,13 +341,13 @@ export function stageIdentityAtBase(serviceDir: string): number {
   return copied;
 }
 
-/** Wrapper log for this environment; null when Node cannot reach it (WSL). */
+/** Backend log for this environment; null when Node cannot reach it (WSL). */
 function serviceLogNative(env: FairplayEnv): string | null {
   if (env.wsl) return null;
   return path.join(env.dataDir, "fairplay-decrypter", "service.log");
 }
 
-/** True when the current attempt's wrapper log shows Apple's enrollment refusal. */
+/** True when the current attempt's backend log shows Apple's enrollment refusal. */
 export function serviceLogShowsProvisionRefusal(env: FairplayEnv): boolean {
   const p = serviceLogNative(env);
   if (!p) return false;
@@ -440,7 +440,7 @@ function logShowsProvisionRefusal(env: FairplayEnv): boolean {
 
 /**
  * FairPlay sign-in through the vendored backend. Fast-paths when already
- * signed in. Feeds user/password on argv (same as the old wrapper's -L flag),
+ * signed in. Feeds user/password on argv (same as the backend's -L flag),
  * watches output for the 2FA prompt, and delivers the code via 2fa.txt.
  */
 export async function login(

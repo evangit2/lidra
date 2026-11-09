@@ -129,7 +129,7 @@
     const status = byId('wrapper-status');
     status.textContent = 'Signing in…';
     try {
-      const result = await bridge.wrapperSignIn({
+      const result = await bridge.fairplaySignIn({
         email: byId('wrapperEmail').value.trim(),
         password: byId('wrapperPassword').value,
         code: byId('wrapperCode').value.trim(),

@@ -167,21 +167,21 @@ jobs:
       - uses: actions/checkout@v7
       - name: Build the Linux environment the Windows app imports
         run: |
-          test -s vendor/wrapper/opt/lidra/wrapper
-          bash scripts/build-wsl-rootfs.sh build/wrapper-tar/wrapper-rootfs.tar.gz
-          tar tzf build/wrapper-tar/wrapper-rootfs.tar.gz > build/wrapper-tar/entries.txt
-          grep -qx './bin/sh' build/wrapper-tar/entries.txt
-          grep -qx './etc/passwd' build/wrapper-tar/entries.txt
-          grep -qx './opt/lidra/wrapper' build/wrapper-tar/entries.txt
-          grep -qx './opt/lidra/rootfs/data/data/com.apple.android.music/files/adi.pb' build/wrapper-tar/entries.txt
-          grep -qx './opt/lidra/rootfs/dev/urandom' build/wrapper-tar/entries.txt
-          grep -qx './opt/lidra/fairplay/fairplay_decrypter/__main__.py' build/wrapper-tar/entries.txt
-          grep -qx './opt/python/python3' build/wrapper-tar/entries.txt
-          du -sh build/wrapper-tar/wrapper-rootfs.tar.gz
+          test -s vendor/fairplay-runtime/opt/lidra/wrapper
+          bash scripts/build-wsl-rootfs.sh build/fairplay-tar/fairplay-rootfs.tar.gz
+          tar tzf build/fairplay-tar/fairplay-rootfs.tar.gz > build/fairplay-tar/entries.txt
+          grep -qx './bin/sh' build/fairplay-tar/entries.txt
+          grep -qx './etc/passwd' build/fairplay-tar/entries.txt
+          grep -qx './opt/lidra/wrapper' build/fairplay-tar/entries.txt
+          grep -qx './opt/lidra/rootfs/data/data/com.apple.android.music/files/adi.pb' build/fairplay-tar/entries.txt
+          grep -qx './opt/lidra/rootfs/dev/urandom' build/fairplay-tar/entries.txt
+          grep -qx './opt/lidra/fairplay/fairplay_decrypter/__main__.py' build/fairplay-tar/entries.txt
+          grep -qx './opt/python/python3' build/fairplay-tar/entries.txt
+          du -sh build/fairplay-tar/fairplay-rootfs.tar.gz
       - uses: actions/upload-artifact@v4
         with:
-          name: wrapper-rootfs
-          path: build/wrapper-tar/wrapper-rootfs.tar.gz
+          name: fairplay-rootfs
+          path: build/fairplay-tar/fairplay-rootfs.tar.gz
           retention-days: 1
 
   build:
@@ -285,7 +285,7 @@ jobs:
       - name: Fetch the lossless runtime archive
         uses: actions/download-artifact@v8
         with:
-          name: wrapper-rootfs
+          name: fairplay-rootfs
           path: build/wrapper-tar
       - name: Build distributables
         run: npx electron-builder --publish never ${{ matrix.targets }}
@@ -293,7 +293,7 @@ jobs:
       # file that is easy to lose in a packaging change: fail loudly instead.
       - name: Verify the runtime is inside the package
         shell: bash
-        run: node scripts/verify-packaged-wrapper.cjs
+        run: node scripts/verify-packaged-fairplay.cjs
       # ffmpeg-static installs the host binary, so packaging for another platform
       # silently ships one that cannot execute. Fail instead of degrading later.
       - name: Verify bundled ffmpeg matches the target platform

@@ -34,7 +34,7 @@ function find(directory, depth = 0) {
     if (entry.isDirectory()) found.push(...find(full, depth + 1));
     // Windows ships the environment as an archive the importer consumes;
     // Linux ships the staged tree plus the backend package.
-    else if (entry.name === "wrapper-rootfs.tar.gz" && fs.statSync(full).size > 1_000_000) found.push(full);
+    else if (entry.name === "fairplay-rootfs.tar.gz" && fs.statSync(full).size > 1_000_000) found.push(full);
     else if (path.basename(full) === "wrapper" && full.includes("fairplay-payload")) found.push(full);
     else if (path.basename(full) === "__main__.py" && full.includes(path.join("fairplay_decrypter"))) found.push(full);
   }
@@ -51,7 +51,7 @@ const runtimes = ROOTS.flatMap((root) => find(root)).filter((file) => {
 
 if (runtimes.length === 0) {
   console.error(
-    "✗ no high-quality runtime in release/ (looked for fairplay-payload/wrapper, the fairplay package, and wrapper-rootfs.tar.gz)",
+    "✗ no high-quality runtime in release/ (looked for fairplay-payload/launcher, the fairplay package, and fairplay-rootfs.tar.gz)",
   );
   process.exit(1);
 }

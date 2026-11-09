@@ -29,7 +29,7 @@ the same UI, but takes over the audio path.
                             └──────────────────────────┬───────────────────────┘
                                                        │
                                     key service ◄──────┤ (key mode)
-                            wrapper decrypt socket ◄───┘ (wrapper mode)
+                            FairPlay decrypt socket ◄───┘ (wrapper mode)
 ```
 
 The page never sees encrypted bytes. Its manifest request is redirected to the
@@ -106,7 +106,7 @@ rendition came from:
 
 | Master | `EXT-X-KEY` in the media playlist | Key comes from |
 | --- | --- | --- |
-| Catalog `enhancedHls` (all lossless/Atmos/AAC renditions) | `skd://itunes.apple.com/…` (FairPlay) | wrapper decrypt socket or key service |
+| Catalog `enhancedHls` (all lossless/Atmos/AAC renditions) | `skd://itunes.apple.com/…` (FairPlay) | FairPlay decrypt socket or key service |
 | `webPlayback` fallback asset (`28:ctrp256`, AAC 256) | `data:` URI carrying a **Widevine** `pssh` | Widevine licence exchange (`LIDRA_WIDEVINE_DEVICE`) |
 
 Lidra's signed-in page is a web session, and every lossless and Atmos rendition in
@@ -121,14 +121,14 @@ in older wrapper/video paths is unrelated to this audio pipeline.
 
 Lidra contains no key extraction and bundles no CDM. It either performs the
 Widevine licence exchange with a device you supply, or asks a service you run for
-keys (or for decryption itself). Priority in `src/main.ts`: wrapper decrypt
-socket when `LIDRA_DECRYPTOR` is set (mode `wrapper`), otherwise the key cache
+keys (or for decryption itself). Priority in `src/main.ts`: FairPlay decrypt
+socket when `LIDRA_DECRYPTOR` is set (mode `fairplay`), otherwise the key cache
 backed by the Widevine device when `LIDRA_WIDEVINE_DEVICE` is set, otherwise the
 configured key service, otherwise an unconfigured provider that fails loudly.
 All of it is configured, never bundled.
 
-Ceilings: the wrapper and key-service paths open every tier (lossless/Atmos
-verified end-to-end on Linux via the wrapper); the Widevine-device path alone
+Ceilings: the FairPlay and key-service paths open every tier (lossless/Atmos
+verified end-to-end on Linux via the FairPlay backend); the Widevine-device path alone
 opens only the AAC 256 kbps `webPlayback` fallback, because every
 `enhancedHls` lossless/Atmos rendition is FairPlay-only.
 
@@ -233,7 +233,7 @@ waiting for the download to finish.
 
 `cenc` (AES-CTR) streams decrypt with the keystream positioned per sample, which
 is why unaligned AAC frames decrypt correctly; `cbcs` keeps its block-aligned
-path. Without a device or wrapper the track still fails, and the UI says so.
+path. Without a device or FairPlay backend the track still fails, and the UI says so.
 
 ### Key service (`LIDRA_KEY_SERVICE`, `LIDRA_KEY_TRANSPORT`)
 
@@ -247,15 +247,15 @@ Newline-delimited JSON over TCP, a Unix socket, or HTTP POST:
 Keys are cached per (song, key URI) for the process lifetime. HTTP adds an
 optional `Authorization: Bearer $LIDRA_KEY_TOKEN`.
 
-### Wrapper decrypt socket (`LIDRA_DECRYPTOR`)
+### FairPlay decrypt socket (`LIDRA_DECRYPTOR`)
 
-How the wrapper itself works — session, wire protocol, the key-context quirk —
-is documented in [WRAPPER.md](WRAPPER.md).
+How the FairPlay backend itself works — session, wire protocol, the key-context quirk —
+is documented in [FAIRPLAY.md](FAIRPLAY.md).
 
-Compatibility with the wrapper-style decryptor used by the reference downloader.
-Set it in Settings → Audio → *Wrapper decrypt socket* (`host:port`), and
-optionally *Wrapper manifest socket* for a wrapper that serves the playlist
-itself. Setting the decrypt socket switches the pipeline to wrapper mode; the
+Compatibility with the FairPlay-style decryptor used by the reference downloader.
+Set it in Settings → Audio → *FairPlay decrypt socket* (`host:port`), and
+optionally *FairPlay manifest socket* for a backend that serves the playlist
+itself. Setting the decrypt socket switches the pipeline to FairPlay mode; the
 key never reaches Lidra, it only sees ciphertext in and plaintext out.
 Set `LIDRA_DECRYPTOR=127.0.0.1:10020` (or `unix:/path`) and Lidra sends
 ciphertext instead of asking for keys:
@@ -268,9 +268,9 @@ decrypt: [u32le length][ciphertext]  →  exactly `length` plaintext bytes
 Complete 16-byte blocks are sent; cbcs leaves a trailing partial block clear, so
 it is never sent.
 
-### Wrapper manifest socket (`LIDRA_MANIFEST_SERVICE`)
+### FairPlay manifest socket (`LIDRA_MANIFEST_SERVICE`)
 
-For masters the account API omits, the wrapper's manifest endpoint is used:
+For masters the account API omits, the FairPlay manifest endpoint is used:
 
 ```
 [len]"1440833098"  →  one line: https://…/master.m3u8
@@ -289,12 +289,12 @@ same folders appear in Apple's other media.
 
 `src/audio/mp4/` implements the box parser, init rewriting (strip `sinf`/`tenc`,
 rename `enca` to its `frma` format) and sample-level decryption. The AES primitive
-is injectable, which is what lets the wrapper socket decrypt remotely without
+is injectable, which is what lets the FairPlay socket decrypt remotely without
 Lidra ever holding a key.
 
-### The wrapper's key context
+### The FairPlay key context
 
-A wrapper process derives one key context per song and pins it until it exits.
+A FairPlay backend process derives one key context per song and pins it until it exits.
 Apple's media playlists begin with a placeholder key
 (`skd://itunes.apple.com/P000000000/s1/e1`) and switch to the song's real key
 before the second segment, so the first arm has to address the placeholder the
@@ -302,7 +302,7 @@ way the reference client does: with the literal song id `0`. Arming it with the
 real id leaves the real key unreachable, and the service then answers with noise
 rather than an error — which is why the pipeline verifies every fragment's frame
 headers (ALAC header repetition, `0x0b77` for AC-3/EC-3) and restarts the
-wrapper once when they do not match.
+backend once when they do not match.
 
 Fragments are decrypted in one pipelined batch with a bounded in-flight window
 (256 KiB of unread plaintext). Round-tripping per sample costs about a
@@ -318,7 +318,7 @@ Covered by automated tests in this repository:
 - Master/media playlist parsing, ranking and preference fallback
   (`test/audio-hls.test.ts`).
 - Key service transports and caching (`test/audio-keys.test.ts`).
-- Wrapper decrypt and manifest sockets, including wire framing, the
+- FairPlay decrypt and manifest sockets, including wire framing, the
   placeholder-key arm id, batched decryption and plaintext verification
   (`test/audio-legacy.test.ts`).
 - Loopback HLS server: playlists, ranges, CORS, retry semantics
@@ -334,9 +334,9 @@ Confirmed tiers (what actually plays, and where):
 
 | Tier | Linux | macOS | Windows |
 | --- | --- | --- | --- |
-| AAC 256 (stream copy) | yes, wrapper + key + Widevine paths | same code, not live-run here | same code, not live-run here |
-| ALAC lossless / hi-res (FLAC repack) | yes, wrapper path decrypt-to-audible | same code + bundled ffmpeg, not live-run here | same code + bundled ffmpeg, not live-run here |
-| Atmos bed 5.1 FLAC | yes, wrapper path (768 + 448 kbps frame-checked) | same code + bundled ffmpeg, not live-run here | same code + bundled ffmpeg, not live-run here |
+| AAC 256 (stream copy) | yes, FairPlay + key + Widevine paths | same code, not live-run here | same code, not live-run here |
+| ALAC lossless / hi-res (FLAC repack) | yes, FairPlay path decrypt-to-audible | same code + bundled ffmpeg, not live-run here | same code + bundled ffmpeg, not live-run here |
+| Atmos bed 5.1 FLAC | yes, FairPlay path (768 + 448 kbps frame-checked) | same code + bundled ffmpeg, not live-run here | same code + bundled ffmpeg, not live-run here |
 | Binaural AAC stereo | selected only for quality `atmos` + spatial `binaural`; stream copy, no ffmpeg | same logic, not live-run here | same logic, not live-run here |
 | Dolby Audio AC-3 | code path identical to Atmos; no live AC-3 master measured | — | — |
 
@@ -352,7 +352,7 @@ copying credentials.
 - Radio, previews, music videos and library-only items without a catalog id keep
   the page's own playback path (the bridge only redirects catalog-id manifests)
   and therefore still need a CDM. Lidra deliberately does not touch them.
-- Without a wrapper or key service, lossless/Atmos fall back to the AAC 256 kbps
+- Without a FairPlay backend or key service, lossless/Atmos fall back to the AAC 256 kbps
   web-playback asset when a Widevine device is configured, and fail with a named
   error otherwise.
 - `ffmpeg` is required for lossless and Dolby renditions; AAC (including the

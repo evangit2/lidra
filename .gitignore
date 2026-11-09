@@ -13,4 +13,4 @@ release/
 assets/lastfm-credentials.json
 
 # runtime archive, built by the packaging step
-build/wrapper-tar/
+build/fairplay-tar/

@@ -9,7 +9,7 @@
 # Usage: scripts/build-wsl-rootfs.sh [output.tar.gz]
 set -euo pipefail
 
-OUT=${1:-build/wrapper-tar/wrapper-rootfs.tar.gz}
+OUT=${1:-build/fairplay-tar/fairplay-rootfs.tar.gz}
 VERSION=${ALPINE_VERSION:-3.20}
 RELEASE=${ALPINE_RELEASE:-3.20.3}
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -42,10 +42,10 @@ EOF
 # The wrapper plus the Android image it chroots into, and the loader and libc
 # its binary was linked against (Alpine is musl, so these ship alongside).
 mkdir -p "$WORK/root/opt"
-cp -a "$ROOT/vendor/wrapper/opt/lidra" "$WORK/root/opt/lidra"
+cp -a "$ROOT/vendor/fairplay-runtime/opt/lidra" "$WORK/root/opt/lidra"
 mkdir -p "$WORK/root/lib64" "$WORK/root/lib/x86_64-linux-gnu"
-cp "$ROOT/vendor/wrapper/lib64/ld-linux-x86-64.so.2" "$WORK/root/lib64/ld-linux-x86-64.so.2"
-cp "$ROOT/vendor/wrapper/lib/x86_64-linux-gnu/libc.so.6" "$WORK/root/lib/x86_64-linux-gnu/libc.so.6"
+cp "$ROOT/vendor/fairplay-runtime/lib64/ld-linux-x86-64.so.2" "$WORK/root/lib64/ld-linux-x86-64.so.2"
+cp "$ROOT/vendor/fairplay-runtime/lib/x86_64-linux-gnu/libc.so.6" "$WORK/root/lib/x86_64-linux-gnu/libc.so.6"
 chmod 755 "$WORK/root/lib64/ld-linux-x86-64.so.2" "$WORK/root/lib/x86_64-linux-gnu/libc.so.6"
 
 # Python for the vendored fairplay-decrypter backend. Alpine minirootfs ships

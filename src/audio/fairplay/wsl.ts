@@ -2,7 +2,7 @@
  * Windows FairPlay runtime: a private WSL2 distro that runs the whole backend.
  *
  * The FairPlay service binary is Linux-only, so on Windows everything
- * (python supervisor + service) lives inside the LidraWrapper distro. No
+ * (python supervisor + service) lives inside the LidraFairplay distro. No
  * Windows/Linux path sharing: state stays under /root/.lidra-fp and the
  * service runs from the image payload in place at /opt/lidra.
  * WSL shares loopback with Windows, so the service ports and the
@@ -25,7 +25,7 @@ import log from "electron-log/main";
 
 const wslLog = log.scope("fairplay.wsl");
 
-export const WSL_DISTRO = "LidraWrapper";
+export const WSL_DISTRO = "LidraFairplay";
 /**
  * Bump to force every machine to re-import the environment on upgrade.
  * A bump wipes the distro AND its trusted Apple session, so users sign in
@@ -109,6 +109,23 @@ function distroPresent(): boolean {
   );
 }
 
+/** Distro name before the fairplay rename; removed best-effort after migration. */
+const LEGACY_WSL_DISTRO = "LidraWrapper";
+
+/** Drop the pre-rename distro so it stops squatting disk after migration. */
+function removeLegacyDistro(): void {
+  try {
+    const list = runWsl(["--list", "--verbose"], 30_000);
+    if (list.code !== 0) return;
+    if (parseWslList(list.output).some((n) => n.toLowerCase() === LEGACY_WSL_DISTRO.toLowerCase())) {
+      const r = runWsl(["--unregister", LEGACY_WSL_DISTRO], 180_000);
+      wslLog.info(`legacy distro unregister: exit ${r.code}`);
+    }
+  } catch {
+    /* best effort: the old distro simply stays */
+  }
+}
+
 function revisionMatches(): boolean {
   try {
     return fs.readFileSync(revisionFile(), "utf8").trim() === WSL_PAYLOAD_REVISION;
@@ -153,7 +170,7 @@ function sh(script: string, timeoutMs = 120_000): { code: number; output: string
   return runWsl(["-d", WSL_DISTRO, "-u", "root", "--", "/bin/sh", "-c", script], timeoutMs);
 }
 
-/** Wrapper log inside the distro. Node on Windows cannot reach it directly. */
+/** Backend log inside the distro. Node on Windows cannot reach it directly. */
 export const WSL_SERVICE_LOG = `${WSL_DATA_DIR}/fairplay-decrypter/service.log`;
 
 /**
@@ -168,12 +185,12 @@ export function writeWslTextFile(absPath: string, content: string): boolean {
   return r.code === 0;
 }
 
-/** Truncate the wrapper log so post-login refusal checks see this attempt only. */
+/** Truncate the backend log so post-login refusal checks see this attempt only. */
 export function truncateWslServiceLog(): void {
   writeWslTextFile(WSL_SERVICE_LOG, "");
 }
 
-/** True when the current attempt's wrapper log shows Apple's enrollment refusal. */
+/** True when the current attempt's backend log shows Apple's enrollment refusal. */
 export function wslServiceLogShowsProvisionRefusal(): boolean {
   const r = sh(`tail -c 100000 ${WSL_SERVICE_LOG} 2>/dev/null | grep -a -c 'ADIProvisioningEnd failed'`);
   return r.code === 0 && Number(r.output.trim()) > 0;
@@ -194,7 +211,7 @@ function stageService(): WslSetup {
     "chmod 755 /opt/lidra/rootfs/system/bin/main /opt/lidra/rootfs/system/bin/linker64 || true",
     "mkdir -p /opt/lidra/rootfs/data/data/com.apple.android.music/files",
     "mkdir -p /root/.lidra-fp/fpdata /root/.lidra-fp/fpconfig",
-    // The wrapper stats for its device identity at the top of its base
+    // The backend stats for its device identity at the top of its base
     // dir (<base>/adi.pb), not the in-app copy. Mirror the provisioned
     // identity there, fill-if-missing so a refresh is never clobbered.
     "for f in adi.pb fsi.pdat persistent_key.txt; do [ -f /opt/lidra/$f ] || cp /opt/lidra/rootfs/data/data/com.apple.android.music/files/$f /opt/lidra/$f 2>/dev/null || true; done",
@@ -254,7 +271,7 @@ export function diagnoseWslRuntime(): WslDiagnoseEntry[] {
   entries.push({ step: "wsl --list", code: list.code, output: list.output.slice(0, 1000) });
   const probe = sh("uname -a; cat /etc/os-release 2>/dev/null | head -3; ls /opt/lidra 2>&1; ls -l /opt/lidra/rootfs/dev 2>&1 | head -8", 60_000);
   entries.push({ step: "distro probe", code: probe.code, output: probe.output.slice(0, 1500) });
-  // The wrapper's own last words: this is what an instant silent death leaves.
+  // The backend's own last words: this is what an instant silent death leaves.
   const svcLog = sh(`tail -40 ${WSL_DATA_DIR}/fairplay-decrypter/service.log 2>&1`, 60_000);
   entries.push({ step: "service log tail", code: svcLog.code, output: svcLog.output.slice(0, 2000) });
   return entries;
@@ -324,5 +341,6 @@ export async function ensureWslRuntime(opts: {
   if (!staged.ok) return staged;
   const ready = stagedProbe();
   if (!ready.ok) return ready;
+  removeLegacyDistro();
   return { ok: true, detail: "WSL runtime ready" };
 }

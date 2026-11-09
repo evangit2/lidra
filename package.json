@@ -134,7 +134,7 @@
       "syncDesktopName": true,
       "extraResources": [
         {
-          "from": "vendor/wrapper/opt/lidra",
+          "from": "vendor/fairplay-runtime/opt/lidra",
           "to": "fairplay-payload"
         },
         {
@@ -258,8 +258,8 @@
       "icon": "build/icon.ico",
       "extraResources": [
         {
-          "from": "build/wrapper-tar/wrapper-rootfs.tar.gz",
-          "to": "wrapper/wrapper-rootfs.tar.gz"
+          "from": "build/fairplay-tar/fairplay-rootfs.tar.gz",
+          "to": "fairplay/fairplay-rootfs.tar.gz"
         }
       ]
     },

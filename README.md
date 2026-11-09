@@ -28,10 +28,10 @@ to the page's own player from an address on your machine. Queue, seeking and the
 player bar work exactly as before — only where the bytes come from changes.
 
 - **No Chromium DRM.** Stock Electron: no Widevine CDM, no EVS/VMP signing. The page's player is satisfied by a loopback HLS playlist instead of a protected CDN stream.
-- **Quality comes from the master manifest**, not from what the web player is offered: hi-res ALAC (up to 24-bit/192 kHz), ALAC lossless, Dolby Atmos (E-AC-3), Dolby Audio (AC-3) and AAC. Lidra asks the Apple Music API for `extendedAssetUrls.enhancedHls` with the session you signed in with (or the wrapper manifest socket when the API omits the master), ranks every rendition and plays the best one your preference allows. Every lossless and Atmos rendition serves FairPlay (`skd://`) keys only, so without a wrapper or key service the pipeline falls back to the Widevine-keyed 256 kbps web-playback asset rather than failing silently.
+- **Quality comes from the master manifest**, not from what the web player is offered: hi-res ALAC (up to 24-bit/192 kHz), ALAC lossless, Dolby Atmos (E-AC-3), Dolby Audio (AC-3) and AAC. Lidra asks the Apple Music API for `extendedAssetUrls.enhancedHls` with the session you signed in with (or the FairPlay manifest socket when the API omits the master), ranks every rendition and plays the best one your preference allows. Every lossless and Atmos rendition serves FairPlay (`skd://`) keys only, so without a FairPlay backend or key service the pipeline falls back to the Widevine-keyed 256 kbps web-playback asset rather than failing silently.
 - **Fragments are decrypted and muxed as they arrive.** Nothing waits for a full download: the player's manifest request is held (up to ~20 s) until the first muxed HLS segment (~2 s of audio) is on disk, so playback typically starts a few seconds after the click, not after a 100 MB+ download.
 - **The page still owns playback.** Because Lidra answers the manifest request with its own playlist, the media element, transport, queue, scrubbing and player bar stay exactly as upstream — seeking included.
-- **Decryption needs a key source you supply**, in this priority: wrapper decrypt socket (remote decryption, never sees a key — the only path verified end-to-end for lossless/Atmos), key service (socket or HTTP, returns 16-byte keys), or built-in Widevine device (`LIDRA_WIDEVINE_DEVICE`, performs the licence exchange itself — ceiling is the AAC 256 kbps web-playback fallback, since Apple offers Widevine keys only there). How the pipeline uses it: [docs/AUDIO-PIPELINE.md](docs/AUDIO-PIPELINE.md). How the wrapper itself works: [docs/WRAPPER.md](docs/WRAPPER.md).
+- **Decryption needs a key source you supply**, in this priority: FairPlay decrypt socket (remote decryption, never sees a key — the only path verified end-to-end for lossless/Atmos), key service (socket or HTTP, returns 16-byte keys), or built-in Widevine device (`LIDRA_WIDEVINE_DEVICE`, performs the licence exchange itself — ceiling is the AAC 256 kbps web-playback fallback, since Apple offers Widevine keys only there). How the pipeline uses it: [docs/AUDIO-PIPELINE.md](docs/AUDIO-PIPELINE.md). How the FairPlay backend itself works: [docs/FAIRPLAY.md](docs/FAIRPLAY.md).
 
 Every track is verified before a sample is decrypted: the initialisation segment is in the
 clear and states the real bit depth, sample rate, channel count and bitrate, so
@@ -45,8 +45,8 @@ decrypt-to-audible playback is verified on Linux (see below).
 | Source | Delivered as | Key path that opens it |
 | --- | --- | --- |
 | AAC-LC / HE-AAC | stream copy (fMP4) | any (Widevine device reaches this tier) |
-| ALAC lossless / hi-res | FLAC in fragmented MP4 (bit-exact) | wrapper or key service (Widevine alone falls back to AAC) |
-| Dolby Atmos bed (E-AC-3) | 5.1 FLAC core (no height objects) | wrapper or key service (Widevine alone falls back to AAC) |
+| ALAC lossless / hi-res | FLAC in fragmented MP4 (bit-exact) | FairPlay backend or key service (Widevine alone falls back to AAC) |
+| Dolby Atmos bed (E-AC-3) | 5.1 FLAC core (no height objects) | FairPlay backend or key service (Widevine alone falls back to AAC) |
 | Binaural spatial render (separate AAC rendition) | stream copy stereo | any, only when quality is `atmos` + `LIDRA_SPATIAL=binaural` |
 | Dolby Audio (AC-3) | FLAC, 5.1 preserved | same code path as Atmos; no live AC-3 master measured yet |
 
@@ -59,8 +59,8 @@ Configuration lives in the Audio section of Settings or the environment:
 | `LIDRA_KEY_SERVICE` | `host:port`, `unix:/path` or `http(s)://…` key service |
 | `LIDRA_KEY_TRANSPORT` | `socket` (default) or `http` |
 | `LIDRA_KEY_TOKEN` | bearer token for an HTTP key service |
-| `LIDRA_DECRYPTOR` | wrapper decrypt socket; switches playback to remote decryption |
-| `LIDRA_MANIFEST_SERVICE` | wrapper manifest socket, for masters the API omits |
+| `LIDRA_DECRYPTOR` | FairPlay decrypt socket; switches playback to remote decryption |
+| `LIDRA_MANIFEST_SERVICE` | FairPlay manifest socket, for masters the API omits |
 | `LIDRA_FFMPEG` | explicit ffmpeg path |
 | `LIDRA_SPATIAL` | `bed` (5.1 Atmos core, default) or `binaural` (Apple's spatial render in stereo) |
 | `LIDRA_WIDEVINE_DEVICE` | `.wvd` file (or directory with `client_id.bin` + `private_key.pem`) for the built-in Widevine licence exchange |
@@ -76,7 +76,7 @@ npm run test:multichannel   # 5.1 Atmos-shaped source through MSE, decoded by Ch
 ```
 
 End-to-end playback is verified on Linux: ALAC and Atmos-bed tracks decrypt via
-the wrapper path and play through the loopback HLS server in the packaged
+the FairPlay path and play through the loopback HLS server in the packaged
 AppImage. macOS and Windows share the same pipeline code and ship a bundled
 ffmpeg for their architecture, but full decrypt-to-audible runs there are not
 claimed — CI covers them at the unit/packaging level only.
@@ -97,7 +97,7 @@ is legally permissible.
 
 What Lidra does to stay narrow:
 
-- Lidra ships the wrapper runtime it decrypts with as part of its releases; any
+- Lidra ships the FairPlay runtime it decrypts with as part of its releases; any
   other key source — key service, CDM device blob — is one **you** supply and
   are entitled to use. It ships no key-extraction tooling and bundles no device
   credentials on any platform.
@@ -107,7 +107,7 @@ What Lidra does to stay narrow:
 - It is not intended to bypass payment, distribute copyrighted audio, or
   facilitate piracy.
 
-Review any third-party key service or wrapper you connect for licensing,
+Review any third-party key service or FairPlay backend you connect for licensing,
 security and legal compliance before use. If you are unsure of your position,
 do not use the lossless/Dolby tiers.
 

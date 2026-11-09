@@ -363,19 +363,19 @@ const TRAY_TEXT: Record<keyof TrayStrings, Record<string, string>> = {
   audioDeviceHint: {
     en: 'Path to a .wvd file, or a folder with client_id.bin and private_key.pem. Takes effect after restarting Lidra.',
   },
-  audioDecryptor: { en: 'Wrapper decrypt socket' },
+  audioDecryptor: { en: 'FairPlay decrypt socket' },
   audioDecryptorHint: {
-    en: 'host:port of a wrapper that decrypts for you — the key never reaches Lidra. Setting it switches the pipeline to wrapper mode, which is what Apple’s FairPlay masters need.',
+    en: 'host:port of a FairPlay backend that decrypts for you — the key never reaches Lidra. Setting it switches the pipeline to FairPlay mode, which is what Apple’s FairPlay masters need.',
   },
-  audioManifest: { en: 'Wrapper manifest socket' },
+  audioManifest: { en: 'FairPlay manifest socket' },
   audioManifestHint: {
-    en: 'Optional host:port of a wrapper that hands out the manifest; use it when the wrapper, not the API, should decide the renditions.',
+    en: 'Optional host:port of a FairPlay backend that hands out the manifest; use it when the backend, not the API, should decide the renditions.',
   },
-  audioWrapperCommand: { en: 'Wrapper command' },
+  audioWrapperCommand: { en: 'FairPlay command' },
   audioWrapperCommandHint: {
-    en: 'Command Lidra runs to start the FairPlay wrapper, which is what lossless and Atmos need. Leave blank to run one yourself.',
+    en: 'Command Lidra runs to start the FairPlay backend, which is what lossless and Atmos need. Leave blank to run one yourself.',
   },
-  audioWrapperAutostart: { en: 'Start wrapper with Lidra' },
+  audioWrapperAutostart: { en: 'Start FairPlay with Lidra' },
   audioRememberLogin: { en: 'Keep me signed in for lossless' },
   audioRememberLoginHint: {
     en: 'Stores the Apple ID sign-in on this computer (OS keyring, or an encrypted file when no keyring is available) so lossless and Atmos start without asking again.',

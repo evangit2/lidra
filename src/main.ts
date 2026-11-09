@@ -230,10 +230,10 @@ app.on("before-quit", () => {
 
 let win: BrowserWindow | null = null;
 /**
- * The wrapper command in force. Windows builds it from the imported WSL
+ * The FairPlay command in force. Windows builds it from the imported WSL
  * environment at runtime, so the configured value is not always the real one.
  */
-let activeWrapperCommand: string | null = null;
+let activeFairplayCommand: string | null = null;
 let audioEngine: AudioEngine | null = null;
 let rendererDocumentGeneration = 0;
 
@@ -505,7 +505,7 @@ function fairplayPayloadCandidates(): string[] {
   const out: string[] = [];
   for (const root of roots) {
     out.push(path.join(root, "fairplay-payload"));
-    out.push(path.join(root, "vendor", "wrapper", "opt", "lidra"));
+    out.push(path.join(root, "vendor", "fairplay-runtime", "opt", "lidra"));
   }
   return out;
 }
@@ -566,8 +566,8 @@ async function setupFairplayWindows(): Promise<FairplayEnv | null> {
     detail: "importing the Linux runtime this build ships with — first run only, a minute or two",
   });
   const candidates = [
-    path.join(process.resourcesPath, "wrapper", "wrapper-rootfs.tar.gz"),
-    path.join(app.getAppPath(), "build", "wrapper-tar", "wrapper-rootfs.tar.gz"),
+    path.join(process.resourcesPath, "fairplay", "fairplay-rootfs.tar.gz"),
+    path.join(app.getAppPath(), "build", "fairplay-tar", "fairplay-rootfs.tar.gz"),
   ];
   const archive = candidates.find((p) => {
     try {
@@ -850,9 +850,7 @@ function initAudioEngine(ses: Electron.Session): AudioEngine {
   // the web player.
   void setupFairplayBackend();
   ipcMain.handle("lidra:fairplay-status", () => fairplayStatusJson());
-  // The settings screen still talks about the "wrapper": same channels, new backend.
-  ipcMain.handle("lidra:wrapper-status", () => fairplayStatusJson());
-  ipcMain.handle("lidra:wrapper-signin", async (_event, payload: unknown) => {
+  ipcMain.handle("lidra:fairplay-signin", async (_event, payload: unknown) => {
     const { email, password, code } = (payload ?? {}) as Record<string, string | undefined>;
     if (!fairplayEnv) {
       return { state: "error", detail: "high-quality backend unavailable on this platform" };
@@ -915,8 +913,8 @@ function initAudioEngine(ses: Electron.Session): AudioEngine {
     mainLog.info("signed out of the web session");
   });
   // The backend runs on demand per command; these stay for settings compat.
-  ipcMain.handle("lidra:wrapper-start", () => fairplayStatusJson());
-  ipcMain.handle("lidra:wrapper-stop", () => fairplayStatusJson());
+  ipcMain.handle("lidra:fairplay-start", () => fairplayStatusJson());
+  ipcMain.handle("lidra:fairplay-stop", () => fairplayStatusJson());
   return engine;
 }
 

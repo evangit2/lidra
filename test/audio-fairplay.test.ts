@@ -65,14 +65,14 @@ describe("fairplay backend", () => {
   });
 
   it("routes WSL spawns through wsl.exe with nosudo", () => {
-    const env = buildWslEnv({ distro: "LidraWrapper", python: "/opt/python/python3" });
-    expect(env.wsl?.distro).toBe("LidraWrapper");
+    const env = buildWslEnv({ distro: "LidraFairplay", python: "/opt/python/python3" });
+    expect(env.wsl?.distro).toBe("LidraFairplay");
     expect(env.noSudo).toBe(true);
     const spec = spawnSpec(env, ["status", "--json"]);
     expect(spec.cmd).toBe("wsl.exe");
     expect(spec.args).toEqual([
       "-d",
-      "LidraWrapper",
+      "LidraFairplay",
       "-u",
       "root",
       "--",
