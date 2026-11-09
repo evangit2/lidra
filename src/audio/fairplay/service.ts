@@ -30,6 +30,8 @@ import type {
   FairplayTier,
 } from "./types";
 
+export type { FairplayAccount, FairplayEnv, FairplayPaths, FairplayStatus, FairplayTier } from "./types";
+
 export const LIB_NAMES = [
   "libandroidappmusic.so",
   "libCoreFP.so",

@@ -2,8 +2,8 @@
  * Audio engine: the part of Lidra that replaces Apple's DRM playback path.
  *
  * The page still decides what to play and drives the transport. When it asks for
- * a manifest, the engine holds that request, resolves the song's highest
- * available rendition through the Apple Music API, decrypts and repackages it,
+ * a manifest, the engine holds that request, picks the song's best tier through
+ * the vendored fairplay-decrypter backend, streams decrypted bytes into ffmpeg,
  * and answers with a loopback HLS playlist. The media element then plays those
  * bytes with the page's own transport code, so queueing, seeking, scrubbing and
  * the player bar behave exactly as they do upstream.
@@ -11,41 +11,19 @@
 import fs from "node:fs";
 import path from "node:path";
 import log from "electron-log/main";
-import { resolveSong, type SongAsset } from "./catalog";
-import {
-  parseMasterPlaylist,
-  rankVariants,
-  selectVariant,
-  type AudioVariant,
-  type QualityTier,
-  type SpatialMode,
-} from "./hls";
-import type { KeyCache } from "./keys";
-import { TrackPipeline, transformFor, type PreparedTrack } from "./pipeline";
+import type { AudioVariant, QualityTier, SpatialMode } from "./hls";
+import { TrackPipeline, listQualities, transformFor, type TrackAsset } from "./pipeline";
 import { HlsServer, type TrackLocation } from "./server";
-import { fetchText } from "./catalog";
-import type { CredentialStore } from "./tokens";
+import type { FairplayEnv } from "./fairplay/service";
 
 const engineLog = log.scope("audio.engine");
 
 export interface AudioEngineOptions {
-  credentials: CredentialStore;
-  keyCache: KeyCache;
+  fairplay: FairplayEnv;
   cacheRoot: string;
   getStorefront: () => string;
   getPreference: () => QualityTier | null;
   ffmpegPath?: string;
-  /** `key` decrypts locally; `wrapper` uses a decrypt socket. */
-  decryptMode?: "key" | "wrapper";
-  decryptorService?: string;
-  /** Live addresses: the wrapper moves to a free port pair when one is taken. */
-  decryptorAddress?: () => string;
-  manifestAddress?: () => string;
-  manifestService?: string;
-  /** Restart the wrapper so it re-derives the song's key context. */
-  restartDecryptor?: () => Promise<void>;
-  /** Resolver for the Widevine-keyed web-playback asset (FairPlay fallback). */
-  webPlayback?: (adamId: string) => Promise<{ text: string; baseUrl: string } | null>;
   /** How Atmos is presented; read per track so a settings change applies. */
   getSpatial?: () => SpatialMode;
   /** Called with a snapshot whenever a pipeline changes state. */
@@ -64,7 +42,6 @@ export class AudioEngine {
   private readonly server: HlsServer;
   private readonly pipelines = new Map<string, TrackPipeline>();
   private readonly appleToPipeline = new Map<string, string>();
-  private readonly assetsByAppleId = new Map<string, SongAsset>();
   private currentAppleId: string | null = null;
   private redirectPending = false;
   private lastError: string | undefined;
@@ -184,25 +161,20 @@ export class AudioEngine {
     if (this.preparation) await this.preparation;
 
     const task = (async () => {
-      const credentials = await this.options.credentials.waitForCredentials();
-      const storefront = this.options.getStorefront().toLowerCase();
-      const asset = await this.asset(appleId, storefront, credentials);
+      const asset: TrackAsset = {
+        id: appleId,
+        storefront: this.options.getStorefront().toLowerCase(),
+        name: appleId,
+      };
       const preference = this.options.getPreference();
 
       const pipeline: TrackPipeline = new TrackPipeline({
         asset,
         onChange: () => this.emit(pipeline),
         preference,
-        keyCache: this.options.keyCache,
         cacheRoot: this.options.cacheRoot,
         ffmpegPath: this.options.ffmpegPath,
-        decryptMode: this.options.decryptMode,
-        decryptorService: this.options.decryptorService,
-        decryptorAddress: this.options.decryptorAddress,
-        manifestService: this.options.manifestService,
-        manifestAddress: this.options.manifestAddress,
-        restartDecryptor: this.options.restartDecryptor,
-        webPlayback: this.options.webPlayback,
+        fairplay: this.options.fairplay,
         spatial: this.options.getSpatial?.() ?? "bed",
       });
       try {
@@ -210,7 +182,7 @@ export class AudioEngine {
         this.pipelines.set(pipeline.id, pipeline);
         this.appleToPipeline.set(appleId, pipeline.id);
         engineLog.info(
-          `prepared ${asset.name} — ${prepared.variant.label} (${prepared.variant.codecs})`,
+          `prepared ${asset.id} — ${prepared.variant.tier} (${prepared.variant.codecs})`,
         );
         this.emit(pipeline);
         void pipeline
@@ -238,24 +210,13 @@ export class AudioEngine {
     await this.preparation;
   }
 
-  private async asset(
-    appleId: string,
-    storefront: string,
-    credentials: Parameters<typeof resolveSong>[2],
-  ): Promise<SongAsset> {
-    const cached = this.assetsByAppleId.get(appleId);
-    if (cached) return cached;
-    const asset = await resolveSong(appleId, storefront, credentials);
-    this.assetsByAppleId.set(appleId, asset);
-    return asset;
-  }
-
   /** List the renditions for a song without downloading it. */
   async qualities(appleId: string): Promise<AudioVariant[]> {
-    const credentials = await this.options.credentials.waitForCredentials();
-    const asset = await this.asset(appleId, this.options.getStorefront().toLowerCase(), credentials);
-    const text = await fetchText(asset.manifestUrl);
-    return rankVariants(parseMasterPlaylist(text, asset.manifestUrl));
+    return listQualities(this.options.fairplay, {
+      id: appleId,
+      storefront: this.options.getStorefront().toLowerCase(),
+      name: appleId,
+    });
   }
 
   private emit(pipeline: TrackPipeline): void {
@@ -287,4 +248,4 @@ export class AudioEngine {
   }
 }
 
-export type { PreparedTrack, QualityTier, AudioVariant };
+export type { QualityTier, AudioVariant };
