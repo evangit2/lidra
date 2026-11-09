@@ -257,9 +257,12 @@ jobs:
           test -s vendor/wrapper/opt/lidra/wrapper
           mkdir -p build/wrapper-tar
           tar czf build/wrapper-tar/wrapper-rootfs.tar.gz -C vendor/wrapper bin etc lib lib64 opt usr
-          tar tzf build/wrapper-tar/wrapper-rootfs.tar.gz | grep -qx 'bin/sh'
-          tar tzf build/wrapper-tar/wrapper-rootfs.tar.gz | grep -qx 'etc/passwd'
-          tar tzf build/wrapper-tar/wrapper-rootfs.tar.gz | grep -qx 'opt/lidra/wrapper'
+          # List once into a file: piping into `grep -q` closes the pipe early and
+          # makes tar fail with a write error.
+          tar tzf build/wrapper-tar/wrapper-rootfs.tar.gz > build/wrapper-tar/entries.txt
+          grep -qx 'bin/sh' build/wrapper-tar/entries.txt
+          grep -qx 'etc/passwd' build/wrapper-tar/entries.txt
+          grep -qx 'opt/lidra/wrapper' build/wrapper-tar/entries.txt
           du -sh build/wrapper-tar/wrapper-rootfs.tar.gz
       - name: Build distributables
         run: npx electron-builder --publish never ${{ matrix.targets }}
