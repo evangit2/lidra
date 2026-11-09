@@ -24,6 +24,13 @@ import path from "node:path";
  */
 export const PREFERRED_WSL_VERSION = 2;
 
+/**
+ * Bump when the payload layout changes, so an environment imported by an older
+ * release is rebuilt instead of reused. An imported root without `/etc/passwd`
+ * cannot resolve `-u root`, which WSL reports as WSL_E_USER_NOT_FOUND.
+ */
+export const WSL_PAYLOAD_REVISION = "2026-11-09-passwd";
+
 /** Name of the Linux environment Lidra imports for itself. */
 export const WSL_DISTRO = "LidraWrapper";
 
@@ -263,8 +270,27 @@ export async function ensureWslRuntime(options: {
   }
 
   let existing: WslDistro | undefined = distros.find((entry) => entry.name === distro);
+  const installDirForMarker = options.installDir ?? path.join(os.homedir(), "AppData", "Local", "Lidra", "wsl");
+  const revisionMarker = path.join(installDirForMarker, ".payload-revision");
+  try {
+    if (fs.readFileSync(revisionMarker, "utf-8").trim() !== WSL_PAYLOAD_REVISION) {
+      // The environment on disk was built from a different payload.
+      if (existing) {
+        progress(`rebuilding ${distro} for this version`);
+        await runCommand("wsl.exe", ["--unregister", distro], 120_000);
+        existing = undefined;
+      }
+    }
+  } catch {
+    // No marker yet: an older release created this environment.
+    if (existing) {
+      progress(`rebuilding ${distro} for this version`);
+      await runCommand("wsl.exe", ["--unregister", distro], 120_000);
+      existing = undefined;
+    }
+  }
 
-  const installDir = options.installDir ?? path.join(os.homedir(), "AppData", "Local", "Lidra", "wsl");
+  const installDir = installDirForMarker;
   fs.mkdirSync(installDir, { recursive: true });
 
   // An older release could import an empty environment (or fail halfway), and a
@@ -282,7 +308,7 @@ export async function ensureWslRuntime(options: {
   if (existing && existing.version === PREFERRED_WSL_VERSION) {
     const health = await runCommand(
       "wsl.exe",
-      ["-d", distro, "-u", "root", "--", "/bin/sh", "-c", "test -x /opt/lidra/wrapper && test -d /opt/lidra/rootfs/system"],
+      ["-d", distro, "-u", "root", "--", "/bin/sh", "-c", "test -x /opt/lidra/wrapper && test -d /opt/lidra/rootfs/system && test -s /etc/passwd"],
       60_000,
     );
     if (health.code === 0) {
@@ -359,6 +385,12 @@ export async function ensureWslRuntime(options: {
     ],
     60_000,
   );
+
+  try {
+    fs.writeFileSync(revisionMarker, WSL_PAYLOAD_REVISION, "utf-8");
+  } catch {
+    // A missing marker only costs one extra rebuild next launch.
+  }
 
   return {
     ok: true,

@@ -28,7 +28,12 @@ file "$(command -v busybox)" | grep -q "statically linked" || {
   exit 1
 }
 
-install -d "$STAGE/bin" "$STAGE/opt/lidra"
+install -d "$STAGE/bin" "$STAGE/opt/lidra" "$STAGE/etc" "$STAGE/root"
+# An imported root needs an account database: without /etc/passwd WSL cannot
+# resolve `-u root`, and every launch fails with WSL_E_USER_NOT_FOUND.
+printf 'root:x:0:0:root:/root:/bin/sh\nnobody:x:65534:65534:nobody:/nonexistent:/bin/false\n' > "$STAGE/etc/passwd"
+printf 'root:x:0:\nnogroup:x:65534:\n' > "$STAGE/etc/group"
+printf '127.0.0.1\tlocalhost\n' > "$STAGE/etc/hosts"
 install -m 0755 "$(command -v busybox)" "$STAGE/bin/busybox"
 ln -sf busybox "$STAGE/bin/sh"
 

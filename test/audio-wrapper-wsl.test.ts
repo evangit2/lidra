@@ -10,6 +10,7 @@ import {
   importArguments,
   parseWslList,
   runtimeArchiveCandidates,
+  WSL_PAYLOAD_REVISION,
   startWslWrapper,
   toWslPath,
   WSL_DISTRO,
@@ -92,6 +93,14 @@ describe("buildWslCommand", () => {
   });
 });
 
+
+/** Mark a directory as holding an environment built from this payload. */
+function seedRevision(installDir: string): string {
+  fs.mkdirSync(installDir, { recursive: true });
+  fs.writeFileSync(path.join(installDir, ".payload-revision"), WSL_PAYLOAD_REVISION);
+  return installDir;
+}
+
 describe("importArguments", () => {
   it("imports the payload as a version 2 environment by default", () => {
     expect(importArguments("LidraWrapper", "C:\\wsl", "C:\\p\\rootfs.tar.gz")).toEqual([
@@ -138,7 +147,8 @@ describe("ensureWslRuntime", () => {
 
   it("accepts an existing version 2 environment without importing", async () => {
     const runImpl = vi.fn(async () => ({ code: 0, stdout: LISTING, stderr: "" }));
-    const result = await ensureWslRuntime({ archivePaths: [], platform: "win32", runImpl });
+    const installDir = seedRevision(fs.mkdtempSync(path.join(os.tmpdir(), "lidra-wsl-home-")));
+    const result = await ensureWslRuntime({ archivePaths: [], platform: "win32", installDir, runImpl });
     expect(result).toMatchObject({ ok: true, code: "ready", distro: "LidraWrapper", imported: false });
     // One listing, one health probe into the environment, no import.
     expect(runImpl).toHaveBeenCalledTimes(2);
@@ -194,6 +204,30 @@ describe("ensureWslRuntime", () => {
     expect(flat.indexOf("--unregister")).toBeLessThan(flat.lastIndexOf("--import"));
   });
 
+  it("rebuilds an environment imported by an older release", async () => {
+    const calls: string[][] = [];
+    const runImpl = async (_command: string, args: string[]) => {
+      calls.push(args);
+      if (args[0] === "--list") {
+        return { code: 0, stdout: "  NAME STATE VERSION\n  LidraWrapper  Stopped  2\n", stderr: "" };
+      }
+      return { code: 0, stdout: "", stderr: "" };
+    };
+    const installDir = fs.mkdtempSync(path.join(os.tmpdir(), "lidra-wsl-home-"));
+
+    const result = await ensureWslRuntime({
+      archivePaths: [archiveFile()],
+      installDir,
+      platform: "win32",
+      runImpl,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(calls.map((args) => args[0])).toContain("--unregister");
+    expect(result.imported).toBe(true);
+    expect(fs.readFileSync(path.join(installDir, ".payload-revision"), "utf-8")).toBe(WSL_PAYLOAD_REVISION);
+  });
+
   it("keeps a healthy version 2 environment and does not import again", async () => {
     const calls: string[][] = [];
     const runImpl = async (_command: string, args: string[]) => {
@@ -206,7 +240,7 @@ describe("ensureWslRuntime", () => {
 
     const result = await ensureWslRuntime({
       archivePaths: [archiveFile()],
-      installDir: fs.mkdtempSync(path.join(os.tmpdir(), "lidra-wsl-home-")),
+      installDir: seedRevision(fs.mkdtempSync(path.join(os.tmpdir(), "lidra-wsl-home-"))),
       platform: "win32",
       runImpl,
     });
