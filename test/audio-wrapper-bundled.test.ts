@@ -149,7 +149,8 @@ describe("packing for a WSL import", () => {
       runImpl: run,
     });
     expect(packed).toBe(target);
-    const packCalls = (): number => run.mock.calls.filter(([, args]) => (args as string[])[0] === "czf").length;
+    const packCalls = (): number =>
+      (run.mock.calls as unknown as Array<[string, string[]]>).filter(([, args]) => args[0] === "czf").length;
     expect(packCalls()).toBe(1);
 
     const again = await packPayloadForImport({
@@ -172,7 +173,8 @@ describe("packing for a WSL import", () => {
     const payload = { kind: "directory" as const, path: payloadDir };
 
     await packPayloadForImport({ payload, targetPath: target, runImpl: run });
-    const packCalls = (): number => run.mock.calls.filter(([, args]) => (args as string[])[0] === "czf").length;
+    const packCalls = (): number =>
+      (run.mock.calls as unknown as Array<[string, string[]]>).filter(([, args]) => args[0] === "czf").length;
     expect(packCalls()).toBe(1);
 
     // A newer build ships a different wrapper binary.
