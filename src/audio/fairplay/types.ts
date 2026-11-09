@@ -46,4 +46,10 @@ export interface FairplayEnv {
   noSudo?: boolean;
   /** Set on Windows: spawn through wsl.exe instead of directly. */
   wsl?: FairplayWsl;
+  /**
+   * Local (Node-reachable) stamp file recording the last Apple enrollment
+   * refusal. Set by the app; login() enforces a quiet period from it so
+   * retries cannot keep a server-side block alive.
+   */
+  cooldownFile?: string;
 }

@@ -153,6 +153,32 @@ function sh(script: string, timeoutMs = 120_000): { code: number; output: string
   return runWsl(["-d", WSL_DISTRO, "-u", "root", "--", "/bin/sh", "-c", script], timeoutMs);
 }
 
+/** Wrapper log inside the distro. Node on Windows cannot reach it directly. */
+export const WSL_SERVICE_LOG = `${WSL_DATA_DIR}/fairplay-decrypter/service.log`;
+
+/**
+ * Write a small text file inside the distro (2FA codes, log truncation).
+ * Node's fs cannot touch distro paths from Windows, so the bytes go
+ * through wsl.exe. Single-quote escaping keeps arbitrary content safe.
+ */
+export function writeWslTextFile(absPath: string, content: string): boolean {
+  const q = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`;
+  const r = sh(`printf '%s' ${q(content)} > ${q(absPath)}`);
+  if (r.code !== 0) wslLog.warn(`wsl text write failed: ${absPath}: ${r.output.slice(0, 200)}`);
+  return r.code === 0;
+}
+
+/** Truncate the wrapper log so post-login refusal checks see this attempt only. */
+export function truncateWslServiceLog(): void {
+  writeWslTextFile(WSL_SERVICE_LOG, "");
+}
+
+/** True when the current attempt's wrapper log shows Apple's enrollment refusal. */
+export function wslServiceLogShowsProvisionRefusal(): boolean {
+  const r = sh(`tail -c 100000 ${WSL_SERVICE_LOG} 2>/dev/null | grep -a -c 'ADIProvisioningEnd failed'`);
+  return r.code === 0 && Number(r.output.trim()) > 0;
+}
+
 /**
  * Ready the service inside the image payload, in place. The 1.6.x layout ran
  * from /opt/lidra directly, and that is what works: copying the tree would
@@ -168,11 +194,12 @@ function stageService(): WslSetup {
     "chmod 755 /opt/lidra/rootfs/system/bin/main /opt/lidra/rootfs/system/bin/linker64 || true",
     "mkdir -p /opt/lidra/rootfs/data/data/com.apple.android.music/files",
     "mkdir -p /root/.lidra-fp/fpdata /root/.lidra-fp/fpconfig",
-    // The wrapper builds its anisette machine-data headers from the host
-    // machine id, and minimal images do not ship one. Without it every
-    // request logs "ERROR retrieving machineData headers" and device
-    // provisioning fails (-45054). Generate once, keep forever: wiping it
-    // would re-enroll a "new device" with Apple.
+    // The wrapper stats for its device identity at the top of its base
+    // dir (<base>/adi.pb), not the in-app copy. Mirror the provisioned
+    // identity there, fill-if-missing so a refresh is never clobbered.
+    "for f in adi.pb fsi.pdat persistent_key.txt; do [ -f /opt/lidra/$f ] || cp /opt/lidra/rootfs/data/data/com.apple.android.music/files/$f /opt/lidra/$f 2>/dev/null || true; done",
+    // Minimal images ship no machine id; generate once, keep forever:
+    // wiping it would re-enroll a "new device" with Apple.
     "[ -s /etc/machine-id ] || cat /proc/sys/kernel/random/uuid | tr -d - > /etc/machine-id",
   ].join(" && ");
   const r = sh(script);

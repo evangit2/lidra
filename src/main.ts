@@ -77,6 +77,7 @@ import {
   buildEnv as buildFairplayEnv,
   buildWslEnv,
   codeFileFor,
+  codeFilePosix,
   findPackageDir,
   findPython,
   isServiceInstall,
@@ -89,6 +90,7 @@ import {
   diagnoseWslRuntime,
   ensureWslRuntime,
   writeDiagnoseReport,
+  writeWslTextFile,
   WSL_DISTRO,
   WSL_PAYLOAD_REVISION,
   WSL_PYTHON,
@@ -552,6 +554,7 @@ async function setupFairplayLinux(): Promise<FairplayEnv | null> {
     mainLog.info("no passwordless sudo; starting the service without it");
     env.noSudo = true;
   }
+  env.cooldownFile = path.join(app.getPath("userData"), "fairplay", "provision-cooldown");
   return env;
 }
 
@@ -583,7 +586,9 @@ async function setupFairplayWindows(): Promise<FairplayEnv | null> {
     return null;
   }
   mainLog.info(`fairplay setup: ${setup.detail} (payload ${WSL_PAYLOAD_REVISION}, distro ${WSL_DISTRO})`);
-  return buildWslEnv({ distro: WSL_DISTRO, python: WSL_PYTHON });
+  const env = buildWslEnv({ distro: WSL_DISTRO, python: WSL_PYTHON });
+  env.cooldownFile = path.join(app.getPath("userData"), "fairplay", "provision-cooldown");
+  return env;
 }
 
 /**
@@ -667,6 +672,14 @@ async function ensureFairplaySession(parent: BrowserWindow | null): Promise<bool
 /** Where the settings-screen sign-in drops the 2FA code for a waiting login. */
 function writeCodeFile(env: FairplayEnv, code: string): void {
   if (!env.serviceDir) throw new Error("backend service is not staged");
+  // The distro path is unreachable from Node on Windows: deliver through
+  // wsl.exe instead (plain fs would silently write to C:).
+  if (env.wsl) {
+    if (!writeWslTextFile(codeFilePosix(env.serviceDir), code)) {
+      throw new Error("could not deliver the 2FA code to the backend");
+    }
+    return;
+  }
   fs.mkdirSync(path.dirname(codeFileFor(env.serviceDir)), { recursive: true });
   fs.writeFileSync(codeFileFor(env.serviceDir), code, { mode: 0o600 });
 }

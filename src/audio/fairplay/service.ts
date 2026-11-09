@@ -30,7 +30,7 @@ import type {
   FairplayTier,
   FairplayWsl,
 } from "./types";
-import { WSL_CONFIG_DIR, WSL_DATA_DIR } from "./wsl";
+import { truncateWslServiceLog, WSL_CONFIG_DIR, WSL_DATA_DIR, writeWslTextFile, wslServiceLogShowsProvisionRefusal } from "./wsl";
 
 export type { FairplayAccount, FairplayEnv, FairplayPaths, FairplayStatus, FairplayTier, FairplayWsl } from "./types";
 
@@ -47,6 +47,21 @@ const DEFAULT_PORTS = { decrypt: 10120, manifest: 20120, account: 30120, key: 40
 
 /** Session files dir inside a staged service, mirroring fairplay config.FILES_DIR. */
 const FILES_REL = path.join("rootfs", "data", "data", "com.apple.android.music", "files");
+
+/** Same dir in POSIX form: the WSL backend lives in-distro, where win32 joins are garbage. */
+export const FILES_POSIX = "rootfs/data/data/com.apple.android.music/files";
+
+/**
+ * Device-identity files the wrapper stats at the TOP of its base dir
+ * (traced: <base>/adi.pb, never the in-app copy). The image carries the
+ * provisioned identity under FILES_REL; staging mirrors it to the base
+ * root fill-if-missing so a refresh is never clobbered. Session tokens
+ * and caches are deliberately excluded — login owns those.
+ */
+export const IDENTITY_FILES = ["adi.pb", "fsi.pdat", "persistent_key.txt"] as const;
+
+/** Apple's device-enrollment refusal in the wrapper log. Any code, not just -45054. */
+export const PROVISION_REFUSED_RE = /ADIProvisioningEnd failed/;
 
 /** Find the vendored package dir: packaged resources first, source tree second. */
 export function findPackageDir(resourcesPath: string, appPath: string): string | null {
@@ -286,12 +301,83 @@ export function stageRuntime(payloadDir: string, env: FairplayEnv): string {
     }
   }
   log.info("fairplay: runtime staged at", dest);
+  stageIdentityAtBase(dest);
   return dest;
 }
 
 /** Where the login flow expects the 2FA code file for the staged service. */
 export function codeFileFor(serviceDir: string): string {
   return path.join(serviceDir, FILES_REL, "2fa.txt");
+}
+
+/** Same, for a service that lives inside the WSL distro (POSIX only). */
+export function codeFilePosix(serviceDir: string): string {
+  return `${serviceDir.replace(/\/+$/, "")}/${FILES_POSIX}/2fa.txt`;
+}
+
+/**
+ * Mirror the provisioned device identity to the base-dir root, where the
+ * wrapper actually stats for it. Fill-if-missing: a refresh the backend
+ * wrote must never be clobbered. Returns files copied.
+ */
+export function stageIdentityAtBase(serviceDir: string): number {
+  let copied = 0;
+  for (const name of IDENTITY_FILES) {
+    const src = path.join(serviceDir, FILES_REL, name);
+    const dst = path.join(serviceDir, name);
+    try {
+      if (fs.statSync(dst).isFile()) continue;
+    } catch {
+      /* dest missing: fall through to the copy */
+    }
+    try {
+      fs.copyFileSync(src, dst);
+      copied += 1;
+    } catch {
+      /* source absent (identity not in this image) or unreadable: skip */
+    }
+  }
+  if (copied > 0) log.info(`fairplay: staged ${copied} device-identity file(s) at the service root`);
+  return copied;
+}
+
+/** Wrapper log for this environment; null when Node cannot reach it (WSL). */
+function serviceLogNative(env: FairplayEnv): string | null {
+  if (env.wsl) return null;
+  return path.join(env.dataDir, "fairplay-decrypter", "service.log");
+}
+
+/** True when the current attempt's wrapper log shows Apple's enrollment refusal. */
+export function serviceLogShowsProvisionRefusal(env: FairplayEnv): boolean {
+  const p = serviceLogNative(env);
+  if (!p) return false;
+  try {
+    const tail = fs.readFileSync(p, "utf8").slice(-100_000);
+    return PROVISION_REFUSED_RE.test(tail);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Truncate the wrapper log so a refusal found after login belongs to this
+ * attempt, not an old one. WSL goes through the distro writer (Node on
+ * Windows cannot touch distro paths).
+ */
+export function resetServiceLog(env: FairplayEnv): void {
+  const p = serviceLogNative(env);
+  if (p) {
+    try {
+      fs.mkdirSync(path.dirname(p), { recursive: true });
+      fs.writeFileSync(p, "");
+    } catch {
+      /* best effort */
+    }
+    return;
+  }
+  if (env.wsl && env.serviceDir) {
+    truncateWslServiceLog();
+  }
 }
 
 const NEEDS_CODE = /2fa|two-factor|verification code|approve/i;
@@ -305,6 +391,51 @@ export interface LoginResult {
   ok: boolean;
   /** Machine-generated failure reason. Never echoes credentials or backend output. */
   detail?: string;
+}
+
+/** Quiet period after Apple refuses device enrollment: retries keep the block alive. */
+export const PROVISION_COOLDOWN_MS = 24 * 3600_000;
+
+/** Milliseconds left on the enrollment cooldown; 0 when free to try. */
+export function cooldownRemainingMs(cooldownFile: string | undefined, nowMs: number): number {
+  if (!cooldownFile) return 0;
+  try {
+    const at = Number(fs.readFileSync(cooldownFile, "utf8").trim());
+    if (!Number.isFinite(at)) return 0;
+    return Math.max(0, at + PROVISION_COOLDOWN_MS - nowMs);
+  } catch {
+    return 0;
+  }
+}
+
+function cooldownMessage(remainingMs: number): string {
+  const when = new Date(Date.now() + remainingMs).toLocaleString();
+  return (
+    `Apple refused to enroll this device for sign-in, so Lidra is holding off ` +
+    `retries (each attempt can extend the block). Try again after ${when}.`
+  );
+}
+
+function recordProvisionRefusal(cooldownFile: string | undefined): void {
+  if (!cooldownFile) return;
+  try {
+    fs.mkdirSync(path.dirname(cooldownFile), { recursive: true });
+    fs.writeFileSync(cooldownFile, String(Date.now()));
+  } catch {
+    /* best effort */
+  }
+}
+
+/** True when the wrapper log for this attempt shows Apple's enrollment refusal. */
+function logShowsProvisionRefusal(env: FairplayEnv): boolean {
+  if (env.wsl) {
+    try {
+      return wslServiceLogShowsProvisionRefusal();
+    } catch {
+      return false;
+    }
+  }
+  return serviceLogShowsProvisionRefusal(env);
 }
 
 /**
@@ -325,12 +456,25 @@ export async function login(
     log.info("fairplay: already signed in");
     return { ok: true };
   }
+  const remaining = cooldownRemainingMs(env.cooldownFile, Date.now());
+  if (remaining > 0) {
+    log.info("fairplay: enrollment cooldown active, not launching the backend");
+    return { ok: false, detail: cooldownMessage(remaining) };
+  }
+  resetServiceLog(env);
   const spec = spawnSpec(env, ["login", "--user", user, "--password", password]);
   log.info("fairplay: starting sign-in");
   return new Promise((resolve) => {
     const child = spawn(spec.cmd, spec.args, { env: spawnEnv(env), cwd: spec.cwd, stdio: ["ignore", "pipe", "pipe"] });
     let settled = false;
     let codeRequested = false;
+    const fail = (detail: string): void => {
+      if (logShowsProvisionRefusal(env)) {
+        recordProvisionRefusal(env.cooldownFile);
+        detail = cooldownMessage(PROVISION_COOLDOWN_MS);
+      }
+      done({ ok: false, detail });
+    };
     const done = (result: LoginResult) => {
       if (settled) return;
       settled = true;
@@ -350,7 +494,7 @@ export async function login(
     }
     signal?.addEventListener("abort", onAbort, { once: true });
     const timer = setTimeout(
-      () => done({ ok: false, detail: "sign-in timed out waiting for Apple" }),
+      () => fail("sign-in timed out waiting for Apple"),
       timeoutMs,
     );
     const confirmSession = (): void => {
@@ -358,13 +502,9 @@ export async function login(
       setTimeout(() => {
         status(env)
           .then((s) =>
-            done(
-              s.session === "signed in"
-                ? { ok: true }
-                : { ok: false, detail: "the backend exited before Apple confirmed sign-in" },
-            ),
+            s.session === "signed in" ? done({ ok: true }) : fail("the backend exited before Apple confirmed sign-in"),
           )
-          .catch(() => done({ ok: false, detail: "could not confirm the session after sign-in" }));
+          .catch(() => fail("could not confirm the session after sign-in"));
       }, 2000);
     };
     const onOutput = (d: Buffer) => {
@@ -375,11 +515,19 @@ export async function login(
         hooks
           .onNeedCode()
           .then((code) => {
+            // Node cannot touch distro paths from Windows: the code file
+            // goes through wsl.exe there (fs would silently write to C:).
+            if (env.wsl) {
+              if (!writeWslTextFile(codeFilePosix(env.serviceDir!), code.trim())) {
+                throw new Error("could not deliver the 2FA code to the backend");
+              }
+              return;
+            }
             fs.mkdirSync(path.dirname(codeFileFor(env.serviceDir!)), { recursive: true });
             fs.writeFileSync(codeFileFor(env.serviceDir!), code.trim());
           })
           .catch((e: unknown) =>
-            done({ ok: false, detail: e instanceof Error ? e.message : "2FA code entry failed" }),
+            fail(e instanceof Error ? e.message : "2FA code entry failed"),
           );
       }
       // Backend prints "signed in" once MUSIC_TOKEN lands.
@@ -389,17 +537,13 @@ export async function login(
     };
     child.stdout.on("data", onOutput);
     child.stderr.on("data", onOutput);
-    child.on("error", (e) => done({ ok: false, detail: `backend process failed to start: ${e.message}` }));
+    child.on("error", (e) => fail(`backend process failed to start: ${e.message}`));
     child.on("close", () => {
       status(env)
         .then((s) =>
-          done(
-            s.session === "signed in"
-              ? { ok: true }
-              : { ok: false, detail: "the backend exited before Apple confirmed sign-in" },
-          ),
+          s.session === "signed in" ? done({ ok: true }) : fail("the backend exited before Apple confirmed sign-in"),
         )
-        .catch(() => done({ ok: false, detail: "could not confirm the session after sign-in" }));
+        .catch(() => fail("could not confirm the session after sign-in"));
     });
   });
 }

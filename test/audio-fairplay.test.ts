@@ -8,10 +8,16 @@ import {
   buildWslEnv,
   cliArgs,
   codeFileFor,
+  codeFilePosix,
+  cooldownRemainingMs,
   findPackageDir,
+  IDENTITY_FILES,
   isServiceInstall,
+  PROVISION_COOLDOWN_MS,
+  PROVISION_REFUSED_RE,
   spawnEnv,
   spawnSpec,
+  stageIdentityAtBase,
 } from "../src/audio/fairplay/service";
 
 const ROOT = path.resolve(__dirname, "..");
@@ -132,5 +138,59 @@ describe("fairplay backend", () => {
     const parsed = JSON.parse(out) as { session: string };
     expect(parsed.session).toBe("not signed in");
     fs.rmSync(state, { recursive: true, force: true });
+  });
+});
+
+describe("provisioning refusal guard", () => {
+  it("matches Apple's enrollment refusal line", () => {
+    expect(
+      PROVISION_REFUSED_RE.test("MachineDataProvisioningRequest: ADIProvisioningEnd failed with code: -45054"),
+    ).toBe(true);
+    expect(PROVISION_REFUSED_RE.test("finished request: https://xp.apple.com/register, status = 200")).toBe(false);
+  });
+
+  it("ships device identity only, never session state", () => {
+    expect([...IDENTITY_FILES]).toEqual(["adi.pb", "fsi.pdat", "persistent_key.txt"]);
+  });
+
+  it("code file path stays POSIX inside the distro", () => {
+    expect(codeFilePosix("/opt/lidra")).toBe(
+      "/opt/lidra/rootfs/data/data/com.apple.android.music/files/2fa.txt",
+    );
+  });
+
+  it("cooldown is free without a stamp and expires after a day", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fp-cool-"));
+    const stamp = path.join(dir, "provision-cooldown");
+    const now = Date.now();
+    expect(cooldownRemainingMs(stamp, now)).toBe(0);
+    fs.writeFileSync(stamp, "not-a-number");
+    expect(cooldownRemainingMs(stamp, now)).toBe(0);
+    fs.writeFileSync(stamp, String(now));
+    const remaining = cooldownRemainingMs(stamp, now);
+    expect(remaining).toBeGreaterThan(PROVISION_COOLDOWN_MS - 60_000);
+    expect(remaining).toBeLessThanOrEqual(PROVISION_COOLDOWN_MS);
+    expect(cooldownRemainingMs(stamp, now + PROVISION_COOLDOWN_MS + 1000)).toBe(0);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("mirrors identity to the service root without clobbering", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fp-ident-"));
+    const files = path.join(dir, "rootfs", "data", "data", "com.apple.android.music", "files");
+    fs.mkdirSync(files, { recursive: true });
+    for (const name of IDENTITY_FILES) fs.writeFileSync(path.join(files, name), `id-${name}`);
+    expect(stageIdentityAtBase(dir)).toBe(3);
+    for (const name of IDENTITY_FILES) {
+      expect(fs.readFileSync(path.join(dir, name), "utf8")).toBe(`id-${name}`);
+    }
+    // A backend refresh must survive re-staging.
+    fs.writeFileSync(path.join(dir, "adi.pb"), "refreshed");
+    expect(stageIdentityAtBase(dir)).toBe(0);
+    expect(fs.readFileSync(path.join(dir, "adi.pb"), "utf8")).toBe("refreshed");
+    // Missing image identity is not an error.
+    fs.rmSync(files, { recursive: true, force: true });
+    fs.rmSync(path.join(dir, "fsi.pdat"));
+    expect(stageIdentityAtBase(dir)).toBe(0);
+    fs.rmSync(dir, { recursive: true, force: true });
   });
 });
