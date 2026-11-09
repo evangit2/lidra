@@ -156,14 +156,32 @@ export interface SpawnSpec {
 /**
  * Native spawn runs `python -m` in the package dir (executing __main__.py by
  * path breaks its relative imports). WSL spawn goes through wsl.exe with the
- * whole backend inside the distro — no Windows/Linux path sharing.
+ * whole backend inside the distro — no Windows/Linux path sharing. wsl.exe
+ * does not forward the parent environment, so every variable the backend
+ * reads rides on an explicit `env` prefix: without it python cannot find
+ * the module and the service install, state dirs, and ports all resolve
+ * to distro defaults instead of Lidra's.
  */
 export function spawnSpec(env: FairplayEnv, args: string[]): SpawnSpec {
   const cli = ["-m", "fairplay_decrypter", ...args];
   if (env.wsl) {
+    const forward: Array<[string, string | undefined]> = [
+      ["PYTHONPATH", env.packageDir],
+      ["FPDECRYPT_SERVICE", env.serviceDir ?? undefined],
+      ["XDG_DATA_HOME", env.dataDir],
+      ["XDG_CONFIG_HOME", env.configDir],
+      ["FPDECRYPT_PORT_DECRYPT", String(env.ports.decrypt)],
+      ["FPDECRYPT_PORT_MANIFEST", String(env.ports.manifest)],
+      ["FPDECRYPT_PORT_ACCOUNT", String(env.ports.account)],
+      ["FPDECRYPT_PORT_KEY", String(env.ports.key)],
+      ["FPDECRYPT_NO_SUDO", env.noSudo ? "1" : undefined],
+    ];
+    const assignments = forward.flatMap(([key, value]) =>
+      value === undefined ? [] : [`${key}=${value}`],
+    );
     return {
       cmd: "wsl.exe",
-      args: ["-d", env.wsl.distro, "-u", "root", "--", env.PYTHON, ...cli],
+      args: ["-d", env.wsl.distro, "-u", "root", "--", "env", ...assignments, env.PYTHON, ...cli],
     };
   }
   return { cmd: env.PYTHON, args: cli, cwd: env.packageDir };

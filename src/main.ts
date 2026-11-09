@@ -480,6 +480,8 @@ function publishQuality(payload: {
 
 /** Vendored FairPlay backend environment. Null on macOS, where the Linux service cannot run. */
 let fairplayEnv: FairplayEnv | null = null;
+/** Last backend setup failure, surfaced through the status channels (no popup). */
+let fairplaySetupError: string | null = null;
 /** Guards the "no key" login prompt so one playback failure opens one window. */
 let fairplayLoginOpen = false;
 /** The no-key prompt fires once per launch; later failures only touch the pill. */
@@ -666,6 +668,7 @@ function writeCodeFile(env: FairplayEnv, code: string): void {
 /** Backend status in the shape the settings screen has always spoken. */
 async function fairplayStatusJson(): Promise<{ state: string; detail: string }> {
   if (!fairplayEnv) {
+    if (fairplaySetupError) return { state: "error", detail: fairplaySetupError };
     return { state: "unavailable", detail: "high-quality backend unavailable on this platform" };
   }
   try {
@@ -705,7 +708,9 @@ async function setupFairplayBackend(): Promise<void> {
     fairplayEnv =
       process.platform === "win32" ? await setupFairplayWindows() : await setupFairplayLinux();
   } catch (error) {
-    mainLog.error(`fairplay setup failed: ${errorMessage(error)}`);
+    const detail = `fairplay setup failed: ${errorMessage(error)}`;
+    mainLog.error(detail);
+    fairplaySetupError = detail;
     return;
   }
   if (!fairplayEnv) return;
