@@ -1,7 +1,7 @@
 {
   "name": "lidra",
   "productName": "Lidra",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "description": "Lidra — an elegant Apple Music desktop client with a native high-quality audio pipeline, forked from Lidra.",
   "main": "dist/main.js",
   "scripts": {

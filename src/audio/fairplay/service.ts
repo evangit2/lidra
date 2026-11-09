@@ -16,7 +16,7 @@
  * caller-supplied state dir, so the app never touches a developer's own
  * ~/.local/share/fairplay-decrypter checkout.
  */
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
@@ -239,6 +239,31 @@ export function stageRuntime(payloadDir: string, env: FairplayEnv): string {
     }
   }
   fs.mkdirSync(path.join(dest, FILES_REL), { recursive: true });
+  // Device nodes cannot live in git, so the staged copy has none — and the
+  // wrapper stops with "Permission denied" when rootfs/dev/urandom is
+  // missing. Copy the host's (cp -a preserves the character devices).
+  const devDir = path.join(dest, "rootfs", "dev");
+  const missingNodes = ["null", "zero", "random", "urandom"].filter((node) => {
+    try {
+      fs.statSync(path.join(devDir, node));
+      return false;
+    } catch {
+      return true;
+    }
+  });
+  if (missingNodes.length > 0) {
+    fs.mkdirSync(devDir, { recursive: true });
+    const quoted = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`;
+    const script =
+      `cd ${quoted(dest)} && for node in ${missingNodes.join(" ")}; ` +
+      `do [ -e rootfs/dev/$node ] || cp -a /dev/$node rootfs/dev/$node; done`;
+    const r = spawnSync("sudo", ["-n", "sh", "-c", script], { encoding: "utf8" });
+    if (r.status !== 0) {
+      throw new Error(
+        `could not create the runtime device nodes (need passwordless sudo): ${(r.stderr || r.error?.message || "").trim().slice(0, 200)}`,
+      );
+    }
+  }
   log.info("fairplay: runtime staged at", dest);
   return dest;
 }

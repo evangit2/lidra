@@ -157,6 +157,11 @@ function stageService(): WslSetup {
     `chmod 755 ${WSL_SERVICE_DIR}/wrapper`,
     `chmod 755 ${WSL_SERVICE_DIR}/rootfs/system/bin/main ${WSL_SERVICE_DIR}/rootfs/system/bin/linker64 || true`,
     "mkdir -p /opt/lidra/service/rootfs/data/data/com.apple.android.music/files",
+    // Device nodes cannot ride the import tar, and the wrapper stops with
+    // "Permission denied" when rootfs/dev/urandom is missing. Staging runs
+    // as root, so create them here on every launch (idempotent).
+    `mkdir -p ${WSL_SERVICE_DIR}/rootfs/dev`,
+    `for spec in "null c 1 3" "zero c 1 5" "random c 1 8" "urandom c 1 9"; do set -- $spec; [ -c ${WSL_SERVICE_DIR}/rootfs/dev/$1 ] || mknod -m 666 ${WSL_SERVICE_DIR}/rootfs/dev/$1 $2 $3 $4; done`,
     "mkdir -p /root/.lidra-fp/fpdata /root/.lidra-fp/fpconfig",
   ].join(" && ");
   const r = sh(script);
@@ -173,6 +178,7 @@ function healthProbe(): WslSetup {
       "test -f /opt/lidra/fairplay/fairplay_decrypter/cli.py",
       "test -x /opt/lidra/wrapper",
       "test -f /opt/lidra/rootfs/system/bin/main",
+      "test -c /opt/lidra/service/rootfs/dev/urandom",
       "/opt/python/python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)'",
     ].join(" && "),
   );
@@ -193,7 +199,7 @@ export function diagnoseWslRuntime(): WslDiagnoseEntry[] {
   entries.push({ step: "wsl --status", code: status.code, output: status.output.slice(0, 1000) });
   const list = runWsl(["--list", "--verbose"], 30_000);
   entries.push({ step: "wsl --list", code: list.code, output: list.output.slice(0, 1000) });
-  const probe = sh("uname -a; cat /etc/os-release 2>/dev/null | head -3; ls /opt/lidra 2>&1", 60_000);
+  const probe = sh("uname -a; cat /etc/os-release 2>/dev/null | head -3; ls /opt/lidra 2>&1; ls -l /opt/lidra/service/rootfs/dev 2>&1 | head -8", 60_000);
   entries.push({ step: "distro probe", code: probe.code, output: probe.output.slice(0, 1500) });
   return entries;
 }
