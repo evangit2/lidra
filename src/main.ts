@@ -595,6 +595,11 @@ async function prepareWindowsWrapper(
     const candidate = Number.parseInt(address.slice(address.lastIndexOf(":") + 1), 10);
     return Number.isInteger(candidate) ? candidate : fallback;
   };
+  publishQuality({
+    label: "Preparing lossless",
+    verdict: "ok",
+    detail: "unpacking the wrapper this build ships with — first run only, a minute or two",
+  });
   const payload = findBundledPayload(bundledPayloadPaths(process.resourcesPath, app.getAppPath()));
   const packed = payload
     ? await packPayloadForImport({
@@ -844,9 +849,14 @@ function initAudioEngine(ses: Electron.Session): AudioEngine {
   // Windows has no FairPlay client of its own: the wrapper ships with Lidra and
   // runs inside a version 1 WSL environment (syscall translation, no VM).
   if (windowsRuntime) {
-    void prepareWindowsWrapper(wrapper, decryptorAddress, manifestAddress).catch((error) =>
-      mainLog.error(`wrapper setup failed: ${errorMessage(error)}`),
-    );
+    // Importing a 120 MB environment and packing it for WSL takes a while on a
+    // cold install; do it after the window is on screen so the app never looks
+    // like it failed to start.
+    setTimeout(() => {
+      void prepareWindowsWrapper(wrapper, decryptorAddress, manifestAddress).catch((error) =>
+        mainLog.error(`wrapper setup failed: ${errorMessage(error)}`),
+      );
+    }, process.platform === "win32" ? 6_000 : 0);
   } else if (bundledRuntime) {
     void prepareBundledWrapper(wrapper, decryptorAddress, manifestAddress).catch((error) =>
       mainLog.error(`wrapper setup failed: ${errorMessage(error)}`),
@@ -1715,7 +1725,13 @@ if (gotLock) {
       const player = initPlayerIPC();
       initNotificationProbe();
       const ses = await initSession();
-      audioEngine = initAudioEngine(ses);
+      // A fault in the audio stack must not be able to stop the app from
+      // opening: everything else (the player) still works without lossless.
+      try {
+        audioEngine = initAudioEngine(ses);
+      } catch (error) {
+        mainLog.error(`audio engine setup failed: ${errorMessage(error)}`);
+      }
       cleanArtworkCache();
 
       if (process.platform === "linux" || process.platform === "win32") {
