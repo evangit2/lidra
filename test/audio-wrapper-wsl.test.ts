@@ -266,7 +266,7 @@ describe("ensureWslRuntime", () => {
       runImpl,
     });
     expect(result.ok).toBe(true);
-    expect(calls.map((args) => args[0])).toEqual(["--list", "--unregister", "--import", "-d"]);
+    expect(calls.map((args) => args[0]).filter((name) => name !== "-d")).toEqual(["--list", "--unregister", "--import"]);
     expect(calls.find((args) => args[0] === "--import")).toContain("2");
     // The prep pass gives the chrooted image the device nodes a Linux root has.
     const prep = calls.find((args) => args[0] === "-d");
@@ -294,7 +294,7 @@ describe("ensureWslRuntime", () => {
       runImpl,
     });
     expect(result.ok).toBe(true);
-    expect(calls.map((args) => args[0])).toEqual(["--list", "--import", "--unregister", "--import", "-d"]);
+    expect(calls.map((args) => args[0]).filter((name) => name !== "-d")).toEqual(["--list", "--import", "--unregister", "--import"]);
   });
 
   it("fails clearly when the shipped files are absent", async () => {

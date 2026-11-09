@@ -29,6 +29,7 @@ const WRAPPER_BINARY = path.join("opt", "lidra", "wrapper");
 /** Files a complete payload must contain. */
 const REQUIRED = [
   "bin/busybox",
+  "etc/passwd",
   "lib64/ld-linux-x86-64.so.2",
   "opt/lidra/wrapper",
   "opt/lidra/rootfs/system",
@@ -219,16 +220,28 @@ export async function packPayloadForImport(options: {
 }): Promise<string | null> {
   if (options.payload.kind === "archive") return options.payload.path;
   const runCommand = options.runImpl ?? run;
+  // Cache the packed archive against what it was made from. A plain "file
+  // exists" check kept serving the archive built by an older release, so an
+  // import silently reused a payload that was missing files.
+  const stampPath = `${options.targetPath}.stamp`;
+  const stamp = stampOf(options.payload);
   try {
-    if (fs.existsSync(options.targetPath) && fs.statSync(options.targetPath).size > 0) {
+    const current = fs.readFileSync(stampPath, "utf-8").trim();
+    if (current === stamp && fs.statSync(options.targetPath).size > 0) {
       return options.targetPath;
     }
   } catch {
-    // Fall through and rebuild it.
+    // No usable archive yet.
   }
   fs.mkdirSync(path.dirname(options.targetPath), { recursive: true });
   const packed = await runCommand("tar", ["czf", options.targetPath, "-C", options.payload.path, "."]);
-  return packed.code === 0 ? options.targetPath : null;
+  if (packed.code !== 0) return null;
+  try {
+    fs.writeFileSync(stampPath, stamp, "utf-8");
+  } catch {
+    // Re-packing next launch is cheap compared with importing a stale payload.
+  }
+  return options.targetPath;
 }
 
 /**

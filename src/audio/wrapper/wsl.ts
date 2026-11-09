@@ -29,7 +29,7 @@ export const PREFERRED_WSL_VERSION = 2;
  * release is rebuilt instead of reused. An imported root without `/etc/passwd`
  * cannot resolve `-u root`, which WSL reports as WSL_E_USER_NOT_FOUND.
  */
-export const WSL_PAYLOAD_REVISION = "2026-11-09-passwd";
+export const WSL_PAYLOAD_REVISION = "2026-11-09b-passwd-marker";
 
 /** Name of the Linux environment Lidra imports for itself. */
 export const WSL_DISTRO = "LidraWrapper";
@@ -399,6 +399,25 @@ export async function ensureWslRuntime(options: {
     ],
     60_000,
   );
+
+  // An import can succeed and still produce an environment nothing can run in
+  // (a payload missing /etc/passwd fails every command with "User not found").
+  // Prove it works before recording it as ready.
+  const verify = await runCommand(
+    "wsl.exe",
+    ["-d", distro, "-u", "root", "--", "/bin/sh", "-c", "test -s /etc/passwd && test -x /opt/lidra/wrapper && echo ok"],
+    60_000,
+  );
+  if (verify.code !== 0) {
+    return {
+      ok: false,
+      code: "import-failed",
+      detail:
+        (verify.stderr || verify.stdout).trim().slice(0, 300) ||
+        "the imported environment cannot run a command",
+      hint: "The payload inside this build looks incomplete. Reinstall Lidra, or report the message above.",
+    };
+  }
 
   try {
     fs.writeFileSync(revisionMarker, WSL_PAYLOAD_REVISION, "utf-8");

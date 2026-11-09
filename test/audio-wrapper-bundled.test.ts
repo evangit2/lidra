@@ -25,6 +25,7 @@ afterEach(() => {
 function makePayload(directory: string): string {
   for (const relative of [
     "bin/busybox",
+    "etc/passwd",
     "bin/sh",
     "lib64/ld-linux-x86-64.so.2",
     "lib/x86_64-linux-gnu/libc.so.6",
@@ -153,6 +154,27 @@ describe("packing for a WSL import", () => {
     });
     expect(again).toBe(target);
     expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-packs when the payload changed since the archive was made", async () => {
+    const payloadDir = makePayload(path.join(root, "payload"));
+    const target = path.join(root, "out", "wrapper-payload.tar.gz");
+    const run = vi.fn(async () => {
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.writeFileSync(target, "packed");
+      return { code: 0, stdout: "", stderr: "" };
+    });
+    const payload = { kind: "directory" as const, path: payloadDir };
+
+    await packPayloadForImport({ payload, targetPath: target, runImpl: run });
+    expect(run).toHaveBeenCalledTimes(1);
+
+    // A newer build ships a different wrapper binary.
+    const wrapper = path.join(payloadDir, "opt/lidra/wrapper");
+    fs.writeFileSync(wrapper, "a different payload from a newer build");
+
+    await packPayloadForImport({ payload, targetPath: target, runImpl: run });
+    expect(run).toHaveBeenCalledTimes(2);
   });
 
   it("passes an existing archive straight through", async () => {
