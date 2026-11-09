@@ -178,10 +178,17 @@ async function run(command: string, args: string[], timeoutMs = 120_000): Promis
       args,
       { timeout: timeoutMs, windowsHide: true, encoding: "buffer" as never },
       (error, stdout, stderr) => {
-        const decode = (value: Buffer | string | undefined): string =>
-          typeof value === "string"
-            ? value
-            : Buffer.from(value ?? []).toString("utf16le");
+        // wsl.exe writes both UTF-8 and UTF-16 depending on the layer that
+        // complains, so pick the encoding from the byte content rather than
+        // assuming: UTF-16 ASCII is about half null bytes, UTF-8 text is not.
+        const decode = (value: Buffer | string | undefined): string => {
+          if (typeof value === "string") return value;
+          const buffer = Buffer.from(value ?? []);
+          if (buffer.length === 0) return "";
+          let nulls = 0;
+          for (const byte of buffer) if (byte === 0) nulls += 1;
+          return buffer.toString(nulls * 3 > buffer.length ? "utf16le" : "utf8");
+        };
         resolve({
           code: error ? ((error as NodeJS.ErrnoException & { code?: number }).code ?? 1) : 0,
           stdout: decode(stdout as Buffer),
@@ -231,7 +238,14 @@ export async function diagnoseWslRuntime(options: {
   const report: Array<{ step: string; code: number; output: string }> = [];
   for (const probe of probes) {
     const result = await runCommand(probe.command, probe.args, 60_000);
-    const output = `${result.stdout}\n${result.stderr}`.trim().slice(0, 2000);
+    // Bytes decoded under the wrong encoding turn into CJK-looking noise; it
+    // tells the reader nothing, so drop those lines instead of printing them.
+    const readable = `${result.stdout}\n${result.stderr}`
+      .split(/\r?\n/)
+      .filter((line) => !/^[\u3000-\u303f\u3400-\u9fff\uff00-\uffef\s]+$/.test(line))
+      .join("\n")
+      .trim();
+    const output = readable.slice(0, 2000);
     report.push({ step: probe.step, code: result.code, output: output || "(no output)" });
   }
   return report;

@@ -244,7 +244,10 @@ export class WrapperService {
     const note = (chunk: Buffer): void => {
       // wsl.exe speaks UTF-16LE, so a raw utf8 read arrives as null-joined text
       // and no pattern matches. Normalise before looking for anything.
-      const text = chunk.includes(0) ? chunk.toString("utf16le") : chunk.toString();
+      // Same mixed encoding as wsl.exe: decide from the bytes, not from a guess.
+      let nulls = 0;
+      for (const byte of chunk) if (byte === 0) nulls += 1;
+      const text = nulls * 3 > chunk.length ? chunk.toString("utf16le") : chunk.toString();
       for (const line of text.split("\n")) {
         const trimmed = line.trim();
         if (!trimmed) continue;
