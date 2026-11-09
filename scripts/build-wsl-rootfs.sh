@@ -52,6 +52,11 @@ chmod 755 "$WORK/root/lib64/ld-linux-x86-64.so.2" "$WORK/root/lib/x86_64-linux-g
 # /root to exist as a home directory.
 mkdir -p "$WORK/root/root"
 chmod 755 "$WORK/root/opt/lidra/wrapper"
+# The wrapper writes into its own rootfs at startup (`mkdir ./rootfs/dev`) and
+# stops if it cannot. Ship the directories it expects, owned by root.
+mkdir -p "$WORK/root/opt/lidra/rootfs/dev" "$WORK/root/opt/lidra/rootfs/proc" "$WORK/root/opt/lidra/rootfs/tmp"
+chmod 1777 "$WORK/root/opt/lidra/rootfs/tmp"
+chmod 755 "$WORK/root/opt/lidra/rootfs/dev" "$WORK/root/opt/lidra/rootfs/proc"
 
 mkdir -p "$(dirname "$OUT")"
 tar czf "$OUT" -C "$WORK/root" .

@@ -29,7 +29,7 @@ export const PREFERRED_WSL_VERSION = 2;
  * release is rebuilt instead of reused. An imported root without `/etc/passwd`
  * cannot resolve `-u root`, which WSL reports as WSL_E_USER_NOT_FOUND.
  */
-export const WSL_PAYLOAD_REVISION = "2026-11-10-alpine";
+export const WSL_PAYLOAD_REVISION = "2026-11-10-alpine2";
 
 /** Name of the Linux environment Lidra imports for itself. */
 export const WSL_DISTRO = "LidraWrapper";
@@ -392,6 +392,7 @@ export async function ensureWslRuntime(options: {
       "/bin/sh",
       "-c",
       `cd ${WSL_WRAPPER_DIR} && chmod 755 wrapper 2>/dev/null; ` +
+        `mkdir -p rootfs/dev rootfs/proc rootfs/tmp && chmod 755 rootfs/dev rootfs/proc && chmod 1777 rootfs/tmp 2>/dev/null; ` +
         `chmod 755 /bin/busybox /bin/sh 2>/dev/null; ` +
         `mkdir -p rootfs/dev && ` +
         "for device in null zero random urandom; do " +
