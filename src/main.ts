@@ -482,6 +482,8 @@ function publishQuality(payload: {
 let fairplayEnv: FairplayEnv | null = null;
 /** Last backend setup failure, surfaced through the status channels (no popup). */
 let fairplaySetupError: string | null = null;
+/** Last sign-in failure reason, surfaced through the status channels. */
+let lastLoginError: string | null = null;
 /** Guards the "no key" login prompt so one playback failure opens one window. */
 let fairplayLoginOpen = false;
 /** The no-key prompt fires once per launch; later failures only touch the pill. */
@@ -650,8 +652,12 @@ async function ensureFairplaySession(parent: BrowserWindow | null): Promise<bool
   }
   if (process.platform === "darwin") return false;
   mainLog.info("no FairPlay session; opening the Apple ID sign-in");
-  const ok = await runFairplayLogin(parent, fairplayEnv);
-  if (!ok) return false;
+  const outcome = await runFairplayLogin(parent, fairplayEnv);
+  if (!outcome.ok) {
+    if (outcome.error) lastLoginError = outcome.error;
+    return false;
+  }
+  lastLoginError = null;
   const ses = session.fromPartition("persist:lidra");
   const applied = await applyFairplaySession(ses);
   if (applied) reloadPlayerWindows();
@@ -673,9 +679,9 @@ async function fairplayStatusJson(): Promise<{ state: string; detail: string }> 
   }
   try {
     const s = await fairplayStatus(fairplayEnv);
-    return s.session === "signed in"
-      ? { state: "running", detail: "signed in" }
-      : { state: "stopped", detail: `session: ${s.session}` };
+    if (s.session === "signed in") return { state: "running", detail: "signed in" };
+    const suffix = lastLoginError ? ` (last sign-in failed: ${lastLoginError})` : "";
+    return { state: "stopped", detail: `session: ${s.session}${suffix}` };
   } catch (error) {
     return { state: "error", detail: errorMessage(error) };
   }
@@ -713,7 +719,13 @@ async function setupFairplayBackend(): Promise<void> {
     fairplaySetupError = detail;
     return;
   }
-  if (!fairplayEnv) return;
+  if (!fairplayEnv) {
+    mainLog.info(
+      `fairplay backend unavailable${fairplaySetupError ? `: ${fairplaySetupError}` : ""}`,
+    );
+    return;
+  }
+  mainLog.info("fairplay backend ready");
   await applyFairplaySession(session.fromPartition("persist:lidra"));
   // Adopt or sign in shortly after launch so the first HQ play is warm.
   setTimeout(() => {
@@ -856,7 +868,7 @@ function initAudioEngine(ses: Electron.Session): AudioEngine {
       }
     }
     try {
-      const ok = await fairplayLoginCli(fairplayEnv, email, password, {
+      const outcome = await fairplayLoginCli(fairplayEnv, email, password, {
         onNeedCode: () =>
           Promise.reject(
             new Error(
@@ -864,14 +876,15 @@ function initAudioEngine(ses: Electron.Session): AudioEngine {
             ),
           ),
       });
-      if (!ok) {
+      if (!outcome.ok) {
         if (process.platform === "win32") diagnoseOnce();
+        if (outcome.detail) lastLoginError = outcome.detail;
         return {
           state: "error",
-          detail:
-            "sign-in failed — if Apple asked for a 2FA code, enter it in the code field and sign in again",
+          detail: outcome.detail ?? "sign-in failed",
         };
       }
+      lastLoginError = null;
     } catch (error) {
       return { state: "error", detail: errorMessage(error) };
     }

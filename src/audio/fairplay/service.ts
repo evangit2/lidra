@@ -30,6 +30,7 @@ import type {
   FairplayTier,
   FairplayWsl,
 } from "./types";
+import { WSL_CONFIG_DIR, WSL_DATA_DIR } from "./wsl";
 
 export type { FairplayAccount, FairplayEnv, FairplayPaths, FairplayStatus, FairplayTier, FairplayWsl } from "./types";
 
@@ -116,10 +117,10 @@ export function buildEnv(paths: FairplayPaths, python: string): FairplayEnv {
 
 /** Build an environment that lives entirely inside the WSL distro. */
 export function buildWslEnv(wsl: FairplayWsl): FairplayEnv {
-  const dataDir = "/root/.lidra-fp/fpdata";
-  const configDir = "/root/.lidra-fp/fpconfig";
-  // The service runs from the image payload in place (/opt/lidra): WSL1
-  // cannot create the device nodes a staged copy would need.
+  const dataDir = WSL_DATA_DIR;
+  const configDir = WSL_CONFIG_DIR;
+  // The service runs from the image payload in place (/opt/lidra), whose
+  // device nodes are baked into the import tar at build time.
   const serviceDir = "/opt/lidra";
   return {
     PYTHON: wsl.python,
@@ -300,6 +301,12 @@ export interface LoginHooks {
   onNeedCode: () => Promise<string>;
 }
 
+export interface LoginResult {
+  ok: boolean;
+  /** Machine-generated failure reason. Never echoes credentials or backend output. */
+  detail?: string;
+}
+
 /**
  * FairPlay sign-in through the vendored backend. Fast-paths when already
  * signed in. Feeds user/password on argv (same as the old wrapper's -L flag),
@@ -312,11 +319,11 @@ export async function login(
   hooks: LoginHooks,
   timeoutMs = 240_000,
   signal?: AbortSignal,
-): Promise<boolean> {
+): Promise<LoginResult> {
   const st = await status(env).catch(() => null);
   if (st?.session === "signed in") {
     log.info("fairplay: already signed in");
-    return true;
+    return { ok: true };
   }
   const spec = spawnSpec(env, ["login", "--user", user, "--password", password]);
   log.info("fairplay: starting sign-in");
@@ -324,7 +331,7 @@ export async function login(
     const child = spawn(spec.cmd, spec.args, { env: spawnEnv(env), cwd: spec.cwd, stdio: ["ignore", "pipe", "pipe"] });
     let settled = false;
     let codeRequested = false;
-    const done = (ok: boolean) => {
+    const done = (result: LoginResult) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
@@ -334,15 +341,32 @@ export async function login(
       } catch {
         /* already exited */
       }
-      resolve(ok);
+      resolve(result);
     };
-    const onAbort = (): void => done(false);
+    const onAbort = (): void => done({ ok: false, detail: "sign-in cancelled" });
     if (signal?.aborted) {
-      done(false);
+      done({ ok: false, detail: "sign-in cancelled" });
       return;
     }
     signal?.addEventListener("abort", onAbort, { once: true });
-    const timer = setTimeout(() => done(false), timeoutMs);
+    const timer = setTimeout(
+      () => done({ ok: false, detail: "sign-in timed out waiting for Apple" }),
+      timeoutMs,
+    );
+    const confirmSession = (): void => {
+      // Give the process a moment to flush state, then confirm via status.
+      setTimeout(() => {
+        status(env)
+          .then((s) =>
+            done(
+              s.session === "signed in"
+                ? { ok: true }
+                : { ok: false, detail: "the backend exited before Apple confirmed sign-in" },
+            ),
+          )
+          .catch(() => done({ ok: false, detail: "could not confirm the session after sign-in" }));
+      }, 2000);
+    };
     const onOutput = (d: Buffer) => {
       const text = d.toString();
       log.info("fairplay login:", text.slice(0, 200));
@@ -354,25 +378,28 @@ export async function login(
             fs.mkdirSync(path.dirname(codeFileFor(env.serviceDir!)), { recursive: true });
             fs.writeFileSync(codeFileFor(env.serviceDir!), code.trim());
           })
-          .catch(() => done(false));
+          .catch((e: unknown) =>
+            done({ ok: false, detail: e instanceof Error ? e.message : "2FA code entry failed" }),
+          );
       }
       // Backend prints "signed in" once MUSIC_TOKEN lands.
       if (/signed in/.test(text)) {
-        // Give the process a moment to flush state, then confirm via status.
-        setTimeout(() => {
-          status(env)
-            .then((s) => done(s.session === "signed in"))
-            .catch(() => done(false));
-        }, 2000);
+        confirmSession();
       }
     };
     child.stdout.on("data", onOutput);
     child.stderr.on("data", onOutput);
-    child.on("error", () => done(false));
+    child.on("error", (e) => done({ ok: false, detail: `backend process failed to start: ${e.message}` }));
     child.on("close", () => {
       status(env)
-        .then((s) => done(s.session === "signed in"))
-        .catch(() => done(false));
+        .then((s) =>
+          done(
+            s.session === "signed in"
+              ? { ok: true }
+              : { ok: false, detail: "the backend exited before Apple confirmed sign-in" },
+          ),
+        )
+        .catch(() => done({ ok: false, detail: "could not confirm the session after sign-in" }));
     });
   });
 }

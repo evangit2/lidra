@@ -31,6 +31,9 @@ export const WSL_PAYLOAD_REVISION = "2026-11-12-fairplay3";
 
 export const WSL_PYTHON = "/opt/python/python3";
 export const WSL_PACKAGE_DIR = "/opt/lidra/fairplay";
+/** Isolated backend state inside the distro (mirrors buildWslEnv). */
+export const WSL_DATA_DIR = "/root/.lidra-fp/fpdata";
+export const WSL_CONFIG_DIR = "/root/.lidra-fp/fpconfig";
 
 export interface WslSetup {
   ok: boolean;
@@ -212,6 +215,9 @@ export function diagnoseWslRuntime(): WslDiagnoseEntry[] {
   entries.push({ step: "wsl --list", code: list.code, output: list.output.slice(0, 1000) });
   const probe = sh("uname -a; cat /etc/os-release 2>/dev/null | head -3; ls /opt/lidra 2>&1; ls -l /opt/lidra/rootfs/dev 2>&1 | head -8", 60_000);
   entries.push({ step: "distro probe", code: probe.code, output: probe.output.slice(0, 1500) });
+  // The wrapper's own last words: this is what an instant silent death leaves.
+  const svcLog = sh(`tail -40 ${WSL_DATA_DIR}/fairplay-decrypter/service.log 2>&1`, 60_000);
+  entries.push({ step: "service log tail", code: svcLog.code, output: svcLog.output.slice(0, 2000) });
   return entries;
 }
 
