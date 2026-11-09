@@ -87,6 +87,7 @@ import {
   diagnoseWslRuntime,
   isWindowsWrapperCommand,
   runtimeArchiveCandidates,
+  WSL_PAYLOAD_REVISION as payloadRevision,
 } from "./audio/wrapper/wsl";
 import { hostPathForWrapper, readWrapperSession, wrapperBaseDir } from "./audio/wrapper/session";
 import {
@@ -903,7 +904,11 @@ function initAudioEngine(ses: Electron.Session): AudioEngine {
           .join("\n\n");
         const file = path.join(app.getPath("userData"), "wrapper-diagnose.txt");
         try {
-          fs.writeFileSync(file, `${new Date().toISOString()}\n\n${text}\n`, { mode: 0o600 });
+          fs.writeFileSync(
+            file,
+            `Lidra ${app.getVersion()} · payload ${payloadRevision}\n${new Date().toISOString()}\n\n${text}\n`,
+            { mode: 0o600 },
+          );
         } catch {
           // The message below still names the failing step.
         }

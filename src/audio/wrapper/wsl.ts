@@ -29,7 +29,7 @@ export const PREFERRED_WSL_VERSION = 2;
  * release is rebuilt instead of reused. An imported root without `/etc/passwd`
  * cannot resolve `-u root`, which WSL reports as WSL_E_USER_NOT_FOUND.
  */
-export const WSL_PAYLOAD_REVISION = "2026-11-10-alpine2";
+export const WSL_PAYLOAD_REVISION = "2026-11-10-alpine3";
 
 /** Name of the Linux environment Lidra imports for itself. */
 export const WSL_DISTRO = "LidraWrapper";
@@ -232,6 +232,11 @@ export async function diagnoseWslRuntime(options: {
       args: ["-d", distro, "-u", "root", "--", "/bin/sh", "-c", `ls -ld /bin/sh /etc/passwd ${WSL_WRAPPER_DIR}/wrapper ${WSL_WRAPPER_DIR}/rootfs/system 2>&1 | head -8`],
     },
     {
+      step: "device nodes",
+      command: "wsl.exe",
+      args: ["-d", distro, "-u", "root", "--", "/bin/sh", "-c", `id; ls -l ${WSL_WRAPPER_DIR}/rootfs/dev 2>&1 | head -8`],
+    },
+    {
       step: "wrapper starts",
       command: "wsl.exe",
       args: ["-d", distro, "-u", "root", "--", "/bin/sh", "-c", `cd ${WSL_WRAPPER_DIR} && ./wrapper -h 2>&1 | head -20`],
@@ -327,7 +332,7 @@ export async function ensureWslRuntime(options: {
   if (existing && existing.version === PREFERRED_WSL_VERSION) {
     const health = await runCommand(
       "wsl.exe",
-      ["-d", distro, "-u", "root", "--", "/bin/sh", "-c", "test -x /opt/lidra/wrapper && test -d /opt/lidra/rootfs/system && test -s /etc/passwd && test -x /lib64/ld-linux-x86-64.so.2"],
+      ["-d", distro, "-u", "root", "--", "/bin/sh", "-c", "test -x /opt/lidra/wrapper && test -d /opt/lidra/rootfs/system && test -s /etc/passwd && test -x /lib64/ld-linux-x86-64.so.2 && test -c /opt/lidra/rootfs/dev/urandom"],
       60_000,
     );
     if (health.code === 0) {
@@ -393,6 +398,9 @@ export async function ensureWslRuntime(options: {
       "-c",
       `cd ${WSL_WRAPPER_DIR} && chmod 755 wrapper 2>/dev/null; ` +
         `mkdir -p rootfs/dev rootfs/proc rootfs/tmp && chmod 755 rootfs/dev rootfs/proc && chmod 1777 rootfs/tmp 2>/dev/null; ` +
+        `for spec in "null 1 3" "zero 1 5" "random 1 8" "urandom 1 9"; do ` +
+        `set -- $spec; [ -e rootfs/dev/$1 ] || mknod -m 666 rootfs/dev/$1 c $2 $3 2>/dev/null || ` +
+        `cp -a /dev/$1 rootfs/dev/$1 2>/dev/null; done; chmod 666 rootfs/dev/* 2>/dev/null; ` +
         `chmod 755 /bin/busybox /bin/sh 2>/dev/null; ` +
         `mkdir -p rootfs/dev && ` +
         "for device in null zero random urandom; do " +
