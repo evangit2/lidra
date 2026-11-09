@@ -14,8 +14,8 @@ stdenvNoCC.mkDerivation {
   # The nix-hash CI job updates this URL and hash as one pair from each release.
   # Do not edit either value by hand, because the pair must stay in sync.
   src = fetchurl {
-    url = "https://github.com/evangit2/lidra/releases/download/${version}/Lidra-${version}-mac-arm64.dmg";
-    hash = "sha256-uDlII0TF+QY0qikk3z0V4RCczL1bslXlGlauDxT+pQs=";
+    url = "https://github.com/evangit2/lidra/releases/download/v${version}/Lidra-${version}-mac-arm64.dmg";
+    hash = "sha256-HGlMp+WFhxvY5XrYGCn6psUqUPczMEg7rZwQffka20o=";
   };
 
   dontPatch = true;
