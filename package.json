@@ -22,7 +22,7 @@
   "license": "BlueOak-1.0.0",
   "type": "commonjs",
   "devDependencies": {
-    "electron": "^45.2.3",
+    "electron": "^45.3.3",
     "electron-builder": "^26.18.1",
     "typescript": "^7.x",
     "vitest": "^5.0.2"
@@ -70,7 +70,7 @@
       "assets/settings.css",
       "assets/settings.js",
       "assets/about.html",
- "assets/fairplayLogin.html",
+      "assets/fairplayLogin.html",
       "assets/authFrameFix.js",
       "assets/authStyleFix.css",
       "assets/lidra-mark.png",
